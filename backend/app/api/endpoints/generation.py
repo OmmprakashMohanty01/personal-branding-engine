@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from app.api.endpoints.scheduling import verify_cron_secret
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -100,7 +101,10 @@ async def generate_trend_drafts(
     return drafts
 
 @router.post("/batch", status_code=status.HTTP_202_ACCEPTED)
-async def generate_batch_drafts(background_tasks: BackgroundTasks):
+async def generate_batch_drafts(
+    background_tasks: BackgroundTasks,
+    _ = Depends(verify_cron_secret)
+):
     """Trigger background batch generation of drafts for the top 5 unresolved trends."""
     background_tasks.add_task(run_batch_generation_background)
     return {"status": "batch_generation_scheduled", "message": "Batch draft generation has been scheduled."}

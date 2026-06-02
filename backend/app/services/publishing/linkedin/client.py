@@ -22,9 +22,9 @@ class LinkedInClient:
     async def check_and_refresh_token(self, db: AsyncSession, account: LinkedInAccount) -> str:
         """Evaluate token expiry and refresh via OAuth2 if required. Returns decrypted access token."""
         now = datetime.now(timezone.utc)
-        # Refresh if expired or expiring in less than 5 minutes
-        if account.expires_at <= now + timedelta(minutes=5):
-            logger.info(f"LinkedIn access token for account {account.id} is near expiration. Refreshing...")
+        # Refresh if expired or expiring in less than 48 hours
+        if account.expires_at <= now + timedelta(hours=48):
+            logger.info(f"LinkedIn access token for account {account.id} is near expiration (within 48 hours). Refreshing...")
             
             # Retrieve encrypted refresh token
             decrypted_refresh = decrypt_token(account.refresh_token)
@@ -110,6 +110,13 @@ class LinkedInClient:
             if resp.status_code != 201 and "mock" in access_token:
                 logger.warning("Mock access token used. Simulating successful publication.")
                 return "urn:li:share:mock_share_id"
+                
+            if resp.status_code not in (200, 201):
+                raise httpx.HTTPStatusError(
+                    f"LinkedIn publishing API returned non-strict success status {resp.status_code}.",
+                    request=resp.request,
+                    response=resp
+                )
                 
             resp.raise_for_status()
             # LinkedIn returns the post URN in the location or x-restli-id headers

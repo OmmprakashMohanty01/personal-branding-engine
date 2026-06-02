@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Generator
 
 # Ensure backend/app/services is importable
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.services.llm_provider import (
     GroqProvider,

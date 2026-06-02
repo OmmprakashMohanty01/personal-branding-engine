@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from app.api.endpoints.scheduling import verify_cron_secret
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -160,7 +161,10 @@ async def get_trend_by_id(
     )
 
 @router.post("/refresh", status_code=status.HTTP_202_ACCEPTED)
-async def refresh_trends(background_tasks: BackgroundTasks):
+async def refresh_trends(
+    background_tasks: BackgroundTasks,
+    _ = Depends(verify_cron_secret)
+):
     """Trigger background execution of the trend aggregator."""
     background_tasks.add_task(run_refresh_background)
     return {"status": "refresh_scheduled", "message": "Aggregation has been scheduled in the background."}

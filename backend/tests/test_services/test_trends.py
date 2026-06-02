@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.future import select
 
 # Ensure backend directory is in path
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app
@@ -232,6 +232,10 @@ async def test_api_endpoints_workflow(api_client: httpx.AsyncClient, db_session:
     assert resp_detail.json()["title"] == "GPT-5 release details"
     
     # Test POST /trends/refresh
-    resp_refresh = await api_client.post("/api/v1/trends/refresh")
-    assert resp_refresh.status_code == 202
+    with patch.dict("os.environ", {"API_CRON_SECRET": "test_cron_key_123"}):
+        resp_refresh = await api_client.post(
+            "/api/v1/trends/refresh",
+            headers={"X-Cron-Secret": "test_cron_key_123"}
+        )
+        assert resp_refresh.status_code == 202
     assert resp_refresh.json()["status"] == "refresh_scheduled"

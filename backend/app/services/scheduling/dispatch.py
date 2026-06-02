@@ -1,10 +1,20 @@
 import logging
+import random
+import asyncio
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.content import ContentDraft
 from app.services.publishing.orchestrator import PublishingOrchestrator
+
+# Configure the log output timestamps to use Asia/Kolkata (IST) timezone
+def ist_converter(*args):
+    tz = ZoneInfo("Asia/Kolkata")
+    return datetime.now(tz).timetuple()
+
+logging.Formatter.converter = ist_converter
 
 logger = logging.getLogger("branding_engine.scheduling.dispatch")
 
@@ -20,7 +30,13 @@ class DispatchService:
         Returns:
             int: The number of posts dispatched.
         """
-        now_utc = datetime.now(timezone.utc)
+        tz_ist = ZoneInfo("Asia/Kolkata")
+        now_ist = datetime.now(tz_ist)
+        
+        logger.info(f"Scanning mature scheduled drafts at {now_ist.isoformat()} (IST).")
+        
+        # Normalize to UTC for SQL query to guarantee timezone string comparison safety in SQLite
+        now_utc = now_ist.astimezone(timezone.utc)
         
         # Select APPROVED drafts scheduled for publication
         stmt = (
@@ -40,7 +56,13 @@ class DispatchService:
         logger.info(f"Found {len(mature_drafts)} mature drafts requiring dispatch.")
         dispatched_count = 0
         
-        for draft in mature_drafts:
+        for idx, draft in enumerate(mature_drafts):
+            # API Throttling: randomized sleep delay (2 to 7 seconds) between external network requests
+            if idx > 0:
+                delay = random.uniform(2.0, 7.0)
+                logger.info(f"API Throttling: Sleeping for {delay:.2f} seconds before dispatching next draft...")
+                await asyncio.sleep(delay)
+
             # Optimistic Locking: Clear the scheduled_for time immediately to prevent concurrent triggers
             draft.scheduled_for = None
             db.add(draft)

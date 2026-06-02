@@ -110,18 +110,48 @@ class GenerationOrchestrator:
             )
             raise e
         
+        # Parse LLM JSON Output
+        import json
+        import re
+        import urllib.parse
+
+        generated_text = raw_output
+        requires_image = False
+        image_prompt = None
+
+        try:
+            clean_output = raw_output.strip()
+            # Strip markdown json code blocks if present
+            code_block_match = re.search(r"```json\s*(.*?)\s*```", clean_output, re.DOTALL)
+            if code_block_match:
+                clean_output = code_block_match.group(1)
+            
+            parsed_data = json.loads(clean_output)
+            generated_text = parsed_data.get("content_text", "")
+            requires_image = parsed_data.get("requires_image", False)
+            image_prompt = parsed_data.get("image_prompt")
+        except Exception as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}. Falling back to treating entire output as plain text. Raw output: {raw_output}")
+            generated_text = raw_output
+
         # 5. Post-Process via Platform Formatter
-        formatted_output = raw_output
+        formatted_output = generated_text
         plat_lower = platform.lower()
         if plat_lower == "x":
-            formatted_output = self.x_formatter.format(raw_output)
+            formatted_output = self.x_formatter.format(generated_text)
         elif plat_lower == "linkedin":
-            formatted_output = self.linkedin_formatter.format(raw_output)
+            formatted_output = self.linkedin_formatter.format(generated_text)
         elif plat_lower == "threads":
-            formatted_output = self.threads_formatter.format(raw_output)
+            formatted_output = self.threads_formatter.format(generated_text)
         elif plat_lower == "substack":
-            formatted_output = self.substack_formatter.format(raw_output)
+            formatted_output = self.substack_formatter.format(generated_text)
             
+        # Dynamic Media Decision Engine URL Construction
+        image_url = None
+        if requires_image and image_prompt:
+            encoded_prompt = urllib.parse.quote(image_prompt)
+            image_url = f"https://image.pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&nologo=true"
+
         # 6. Persist to Database
         draft = ContentDraft(
             trend_id=trend.id,
@@ -129,11 +159,14 @@ class GenerationOrchestrator:
             platform=plat_lower,
             content_text=formatted_output,
             status="DRAFT",
+            image_url=image_url,
             generated_at=datetime.now(timezone.utc),
             llm_metadata={
                 "model": getattr(self.llm_provider, "primary_name", "unknown"),
                 "prompt_length": len(user_prompt) + len(system_prompt),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "requires_image": requires_image,
+                "image_prompt": image_prompt
             }
         )
         

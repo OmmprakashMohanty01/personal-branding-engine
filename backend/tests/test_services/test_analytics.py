@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.future import select
 
 # Ensure backend directory is in path
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app

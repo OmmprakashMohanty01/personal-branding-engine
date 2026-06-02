@@ -91,6 +91,20 @@ class XClient:
             parts = [p.strip() for p in text.split("---thread-split---") if p.strip()]
         else:
             parts = [text.strip()]
+
+        # Enforce link safety for X: strip all URLs from parts[0] and append them as a threaded reply (parts[1])
+        if parts:
+            import re
+            urls = re.findall(r'(https?://[^\s]+)', parts[0])
+            if urls:
+                # Strip URLs from the main post body (parts[0])
+                parts[0] = re.sub(r'https?://[^\s]+', '', parts[0]).strip()
+                # Clean up multiple spaces that might be left
+                parts[0] = re.sub(r' +', ' ', parts[0])
+                
+                urls_reply = " ".join(urls)
+                # Insert the URLs as a threaded reply immediately after parts[0]
+                parts.insert(1, urls_reply)
             
         posted_ids = []
         headers = {
@@ -117,6 +131,12 @@ class XClient:
                     tweet_id = f"mock_tweet_id_{idx + 1}"
                 else:
                     try:
+                        if resp.status_code not in (200, 201):
+                            raise httpx.HTTPStatusError(
+                                f"X tweet publication returned non-strict success status {resp.status_code}: {resp.text}",
+                                request=resp.request,
+                                response=resp
+                            )
                         resp.raise_for_status()
                         tweet_id = resp.json().get("data", {}).get("id")
                         if not tweet_id:

@@ -36,6 +36,7 @@ class ContentDraft(Base):
     approved_at = Column(DateTime(timezone=True), nullable=True)
     final_content = Column(Text, nullable=True)
     scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
+    image_url = Column(String(512), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

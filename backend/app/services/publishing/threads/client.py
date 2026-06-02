@@ -112,6 +112,12 @@ class ThreadsClient:
                     creation_id = f"mock_creation_id_{idx + 1}"
                 else:
                     try:
+                        if resp1.status_code not in (200, 201):
+                            raise httpx.HTTPStatusError(
+                                f"Threads container creation returned non-strict success status {resp1.status_code}: {resp1.text}",
+                                request=resp1.request,
+                                response=resp1
+                            )
                         resp1.raise_for_status()
                         creation_id = resp1.json().get("id")
                         if not creation_id:
@@ -141,6 +147,12 @@ class ThreadsClient:
                     post_id = f"mock_threads_post_id_{idx + 1}"
                 else:
                     try:
+                        if resp2.status_code not in (200, 201):
+                            raise httpx.HTTPStatusError(
+                                f"Threads publishing returned non-strict success status {resp2.status_code}: {resp2.text}",
+                                request=resp2.request,
+                                response=resp2
+                            )
                         resp2.raise_for_status()
                         post_id = resp2.json().get("id")
                         if not post_id:

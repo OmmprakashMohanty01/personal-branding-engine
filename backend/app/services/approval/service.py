@@ -89,6 +89,7 @@ class ApprovalService:
         
         # Update existing record and delete the newly generated duplicate record
         draft.content_text = new_variant.content_text
+        draft.image_url = new_variant.image_url
         draft.llm_metadata = new_variant.llm_metadata
         draft.status = "PENDING_APPROVAL"
         draft.feedback_notes = feedback

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.future import select
 
 # Ensure backend directory is in path
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app
@@ -135,6 +135,12 @@ async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_sessi
     assert updated_draft.llm_metadata["linkedin_post_id"] == "urn:li:share:share_id_987"
     assert "published_url" in updated_draft.llm_metadata
 
+    # Assert database cleanup expunged the record
+    db_session.expire_all()
+    res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-10"))
+    db_draft = res.scalars().first()
+    assert db_draft is None
+
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
 async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock, db_session: AsyncSession):
@@ -162,6 +168,12 @@ async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock,
     
     assert updated_draft.status == "FAILED_PUBLISHING"
     assert "Publishing failed" in updated_draft.feedback_notes
+
+    # Assert database preserves the record for review
+    res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-11"))
+    db_draft = res.scalars().first()
+    assert db_draft is not None
+    assert db_draft.status == "FAILED_PUBLISHING"
 
 
 # ==========================================
@@ -200,3 +212,60 @@ async def test_publishing_api_endpoints_connect_and_publish(api_client: httpx.As
         data_pub = resp_pub.json()
         assert data_pub["status"] == "PUBLISHED"
         assert data_pub["llm_metadata"]["linkedin_post_id"] == "urn:li:share:urn_test_123"
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.post")
+async def test_client_refresh_within_48_hours(mock_post: MagicMock, db_session: AsyncSession):
+    now = datetime.now(timezone.utc)
+    # Token expires in 40 hours (within the 48-hour threshold window)
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:principal",
+        access_token=encrypt_token("old_access_token"),
+        refresh_token=encrypt_token("valid_refresh_token"),
+        expires_at=now + timedelta(hours=40),
+        refresh_expires_at=now + timedelta(days=30)
+    )
+    db_session.add(account)
+    await db_session.commit()
+    
+    mock_post.return_value = MagicMock(status_code=200)
+    mock_post.return_value.json.return_value = {
+        "access_token": "new_refreshed_access_48h",
+        "refresh_token": "valid_refresh_token",
+        "expires_in": 3600,
+        "refresh_token_expires_in": 86400
+    }
+    
+    client = LinkedInClient()
+    active_token = await client.check_and_refresh_token(db_session, account)
+    
+    assert active_token == "new_refreshed_access_48h"
+    mock_post.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_linkedin_pre_flight_length_validation_failure(db_session: AsyncSession):
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        access_token=encrypt_token("access"),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2)
+    )
+    db_session.add(account)
+    
+    # 3001 characters (exceeds LinkedIn limit of 3000)
+    long_content = "l" * 3001
+    draft = ContentDraft(
+        id="d-li-long",
+        platform="linkedin",
+        content_text=long_content,
+        status="APPROVED"
+    )
+    db_session.add(draft)
+    await db_session.commit()
+    
+    orchestrator = PublishingOrchestrator()
+    updated_draft = await orchestrator.publish_draft(db_session, "d-li-long")
+    
+    assert updated_draft.status == "FAILED_PUBLISHING"
+    assert "Pre-flight validation failed" in updated_draft.feedback_notes

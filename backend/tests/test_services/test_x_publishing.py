@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.future import select
 
 # Ensure backend directory is in path
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app
@@ -311,3 +311,65 @@ async def test_x_publishing_api_endpoints(api_client: httpx.AsyncClient, db_sess
         assert data_pub["status"] == "PUBLISHED"
         assert data_pub["llm_metadata"]["x_tweet_ids"] == ["tweet_id_api_123"]
         assert data_pub["llm_metadata"]["published_url"] == "https://x.com/i/web/status/tweet_id_api_123"
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.post")
+async def test_x_client_publish_url_safety_split(mock_post: MagicMock, db_session: AsyncSession):
+    now = datetime.now(timezone.utc)
+    account = XAccount(
+        twitter_id="12345",
+        username="test_user",
+        access_token=encrypt_token("valid_access_token"),
+        expires_at=now + timedelta(hours=1),
+    )
+    db_session.add(account)
+    await db_session.commit()
+    
+    responses = [
+        make_response(status_code=201, json_data={"data": {"id": "t1"}}),
+        make_response(status_code=201, json_data={"data": {"id": "t2"}}),
+    ]
+    mock_post.side_effect = responses
+    
+    client = XClient()
+    # Post contains a URL, which should trigger the splitting
+    post_text = "Check this out https://google.com for more info"
+    posted_ids = await client.publish_post(db_session, account, post_text)
+    
+    assert posted_ids == ["t1", "t2"]
+    assert mock_post.call_count == 2
+    
+    call_args_list = mock_post.call_args_list
+    # The first tweet should have the URL stripped
+    assert call_args_list[0][1]["json"] == {"text": "Check this out for more info"}
+    # The second tweet should contain the stripped URL as a reply
+    assert call_args_list[1][1]["json"] == {"text": "https://google.com", "reply": {"in_reply_to_tweet_id": "t1"}}
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_x_pre_flight_length_validation_failure(db_session: AsyncSession):
+    account = XAccount(
+        twitter_id="12345",
+        username="test_user",
+        access_token=encrypt_token("access"),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2)
+    )
+    db_session.add(account)
+    
+    # 281 characters (exceeds X limit of 280)
+    long_content = "x" * 281
+    draft = ContentDraft(
+        id="d-x-long",
+        platform="x",
+        content_text=long_content,
+        status="APPROVED"
+    )
+    db_session.add(draft)
+    await db_session.commit()
+    
+    orchestrator = PublishingOrchestrator()
+    updated_draft = await orchestrator.publish_draft(db_session, "d-x-long")
+    
+    assert updated_draft.status == "FAILED_PUBLISHING"
+    assert "Pre-flight validation failed" in updated_draft.feedback_notes

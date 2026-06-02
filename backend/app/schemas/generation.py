@@ -9,6 +9,11 @@ class GenerateRequest(BaseModel):
 class TweakRequest(BaseModel):
     feedback: str
 
+class GeneratedPost(BaseModel):
+    content_text: str
+    requires_image: bool
+    image_prompt: Optional[str] = None
+
 class DraftResponse(BaseModel):
     id: str
     trend_id: Optional[str] = None
@@ -16,6 +21,7 @@ class DraftResponse(BaseModel):
     platform: str
     content_text: str
     status: str
+    image_url: Optional[str] = None
     generated_at: datetime
     llm_metadata: Dict[str, Any]
     feedback_notes: Optional[str] = None

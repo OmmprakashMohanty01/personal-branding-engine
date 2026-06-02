@@ -104,6 +104,26 @@ class PublishingOrchestrator:
         # Determine draft copy, falling back to content_text if final_content edit is empty
         post_text = draft.final_content if draft.final_content else draft.content_text
 
+        # Pre-flight Length Validation
+        if platform_lower == "x":
+            parts = [p.strip() for p in post_text.split("---thread-split---")] if "---thread-split---" in post_text else [post_text.strip()]
+            for part in parts:
+                if len(part) > 280:
+                    draft.status = "FAILED_PUBLISHING"
+                    draft.feedback_notes = f"Pre-flight validation failed: X post part exceeds 280-character limit ({len(part)} characters)."
+                    await db.commit()
+                    await db.refresh(draft)
+                    logger.error(f"Pre-flight length validation failed for X draft {draft_id}: part length {len(part)} > 280.")
+                    return draft
+        elif platform_lower == "linkedin":
+            if len(post_text) > 3000:
+                draft.status = "FAILED_PUBLISHING"
+                draft.feedback_notes = f"Pre-flight validation failed: LinkedIn post exceeds 3,000-character limit ({len(post_text)} characters)."
+                await db.commit()
+                await db.refresh(draft)
+                logger.error(f"Pre-flight length validation failed for LinkedIn draft {draft_id}: length {len(post_text)} > 3000.")
+                return draft
+
         if platform_lower == "linkedin":
             try:
                 account = await self._get_default_linkedin_account(db)
@@ -117,11 +137,7 @@ class PublishingOrchestrator:
                 metadata["linkedin_post_id"] = post_urn
                 metadata["published_url"] = f"https://www.linkedin.com/feed/update/{post_urn}"
                 draft.llm_metadata = metadata
-                
-                await db.commit()
-                await db.refresh(draft)
                 logger.info(f"Successfully published draft {draft_id} to LinkedIn. Post URN: {post_urn}")
-                return draft
                 
             except Exception as e:
                 # Capture error, transition state, and save stack trace/message for review
@@ -138,10 +154,6 @@ class PublishingOrchestrator:
                         "CRITICAL"
                     )
                 )
-                
-                await db.commit()
-                await db.refresh(draft)
-                return draft
         elif platform_lower == "x":
             try:
                 account = await self._get_default_x_account(db)
@@ -156,11 +168,7 @@ class PublishingOrchestrator:
                 if tweet_ids:
                     metadata["published_url"] = f"https://x.com/i/web/status/{tweet_ids[0]}"
                 draft.llm_metadata = metadata
-                
-                await db.commit()
-                await db.refresh(draft)
                 logger.info(f"Successfully published draft {draft_id} to X. Tweet IDs: {tweet_ids}")
-                return draft
                 
             except XPublishingError as e:
                 # Capture partial thread failure
@@ -185,10 +193,6 @@ class PublishingOrchestrator:
                     metadata["published_url"] = f"https://x.com/i/web/status/{e.published_tweet_ids[0]}"
                 draft.llm_metadata = metadata
                 
-                await db.commit()
-                await db.refresh(draft)
-                return draft
-                
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Failed to publish draft {draft_id} to X: {error_msg}")
@@ -203,10 +207,6 @@ class PublishingOrchestrator:
                         "CRITICAL"
                     )
                 )
-                
-                await db.commit()
-                await db.refresh(draft)
-                return draft
         elif platform_lower == "threads":
             try:
                 account = await self._get_default_threads_account(db)
@@ -221,11 +221,7 @@ class PublishingOrchestrator:
                 if post_ids:
                     metadata["published_url"] = f"https://www.threads.net/@{account.username}/post/{post_ids[0]}"
                 draft.llm_metadata = metadata
-                
-                await db.commit()
-                await db.refresh(draft)
                 logger.info(f"Successfully published draft {draft_id} to Threads. Post IDs: {post_ids}")
-                return draft
                 
             except ThreadsPublishingError as e:
                 # Capture partial thread and/or orphan container failure
@@ -253,10 +249,6 @@ class PublishingOrchestrator:
                     metadata["published_url"] = f"https://www.threads.net/@{account.username}/post/{e.published_post_ids[0]}"
                 draft.llm_metadata = metadata
                 
-                await db.commit()
-                await db.refresh(draft)
-                return draft
-                
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Failed to publish draft {draft_id} to Threads: {error_msg}")
@@ -271,10 +263,6 @@ class PublishingOrchestrator:
                         "CRITICAL"
                     )
                 )
-                
-                await db.commit()
-                await db.refresh(draft)
-                return draft
         else: # platform_lower == "substack"
             try:
                 account = await self._get_default_substack_account(db)
@@ -288,11 +276,7 @@ class PublishingOrchestrator:
                 metadata["substack_dispatch"] = "Successfully sent post via email-to-publish draft ingestion."
                 metadata["published_url"] = "https://substack.com"
                 draft.llm_metadata = metadata
-                
-                await db.commit()
-                await db.refresh(draft)
                 logger.info(f"Successfully published draft {draft_id} to Substack via email-to-publish.")
-                return draft
                 
             except smtplib.SMTPException as e:
                 error_msg = str(e)
@@ -309,10 +293,6 @@ class PublishingOrchestrator:
                     )
                 )
                 
-                await db.commit()
-                await db.refresh(draft)
-                return draft
-                
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Failed to publish draft {draft_id} to Substack: {error_msg}")
@@ -327,7 +307,32 @@ class PublishingOrchestrator:
                         "CRITICAL"
                     )
                 )
-                
-                await db.commit()
-                await db.refresh(draft)
-                return draft
+
+        # Handle DB updates and cleanups
+        if draft.status == "PUBLISHED":
+            # Create a transient copy to return without database association, preventing DetachedInstanceError after delete
+            response_draft = ContentDraft(
+                id=draft.id,
+                trend_id=draft.trend_id,
+                persona_id=draft.persona_id,
+                platform=draft.platform,
+                content_text=draft.content_text,
+                status=draft.status,
+                generated_at=draft.generated_at,
+                llm_metadata=draft.llm_metadata,
+                feedback_notes=draft.feedback_notes,
+                approved_at=draft.approved_at,
+                final_content=draft.final_content,
+                scheduled_for=draft.scheduled_for,
+                image_url=draft.image_url,
+                created_at=draft.created_at,
+                updated_at=draft.updated_at
+            )
+            await db.delete(draft)
+            await db.commit()
+            logger.info(f"Successfully expunged published draft {draft_id} from database.")
+            return response_draft
+        else:
+            await db.commit()
+            await db.refresh(draft)
+            return draft

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.future import select
 
 # Ensure backend directory is in path
-sys.path.insert(0, "/Users/ommprakashmohanty/.gemini/antigravity-ide/scratch/personal-branding-engine/backend")
+sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app
@@ -223,6 +223,10 @@ async def test_generation_api_endpoints(mock_generate: MagicMock, api_client: ht
     assert data_regen["status"] == "DRAFT"
     
     # 4.4 Test POST /batch
-    resp_batch = await api_client.post("/api/v1/generation/batch")
-    assert resp_batch.status_code == 202
+    with patch.dict("os.environ", {"API_CRON_SECRET": "test_cron_key_123"}):
+        resp_batch = await api_client.post(
+            "/api/v1/generation/batch",
+            headers={"X-Cron-Secret": "test_cron_key_123"}
+        )
+        assert resp_batch.status_code == 202
     assert resp_batch.json()["status"] == "batch_generation_scheduled"
