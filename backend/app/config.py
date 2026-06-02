@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     # Database Settings
     # Supports fallback to local SQLite for easy development & testing
     DATABASE_URL: str = "sqlite+aiosqlite:///./branding_engine.db"
+    ALEMBIC_DATABASE_URL: Optional[str] = None
     
     # LLM Settings
     LLM_PRIMARY_PROVIDER: str = "groq"

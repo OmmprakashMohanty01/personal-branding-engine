@@ -21,12 +21,22 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_sync_url() -> str:
-    """Strip async drivers for alembic migration runner."""
-    url = settings.DATABASE_URL
-    if url.startswith("sqlite+aiosqlite://"):
-        return url.replace("sqlite+aiosqlite://", "sqlite://", 1)
-    if url.startswith("postgresql+asyncpg://"):
-        return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    """Get synchronous database URL for alembic migrations."""
+    # Prioritize ALEMBIC_DATABASE_URL from environment or settings
+    url = os.getenv("ALEMBIC_DATABASE_URL")
+    if not url:
+        url = getattr(settings, "ALEMBIC_DATABASE_URL", None)
+    if not url:
+        url = settings.DATABASE_URL
+
+    # Normalize driver schemas
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    elif url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    elif url.startswith("sqlite+aiosqlite://"):
+        url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+        
     return url
 
 def run_migrations_offline() -> None:
