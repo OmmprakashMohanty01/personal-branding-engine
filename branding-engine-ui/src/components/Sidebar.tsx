@@ -8,7 +8,6 @@ export default function Sidebar() {
 
   const links = [
     { name: "Dashboard", href: "/" },
-    { name: "Approvals", href: "/approvals" },
   ];
 
   return (

@@ -12,14 +12,8 @@ sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.database import Base, get_db
 from app.main import app
-from app.models.trend import Trend
 from app.models.content import Persona, ContentDraft
-from app.services.generation.formatters import (
-    XFormatter,
-    LinkedInFormatter,
-    ThreadsFormatter,
-    SubstackFormatter
-)
+from app.services.generation.formatters import LinkedInFormatter
 from app.services.generation.prompts import PromptFactory
 from app.services.generation.orchestrator import GenerationOrchestrator
 
@@ -57,25 +51,6 @@ async def api_client(db_session: AsyncSession) -> httpx.AsyncClient:
 # ==========================================
 # 1. FORMATTER TESTS
 # ==========================================
-def test_x_formatter_splitting():
-    formatter = XFormatter()
-    
-    # Text shorter than 280 characters should remain intact
-    short_text = "This is a short post."
-    assert formatter.format(short_text) == short_text
-    
-    # Text exceeding 280 should split
-    long_text = "Paragraph 1: " + "a" * 150 + "\n\nParagraph 2: " + "b" * 150
-    formatted = formatter.format(long_text)
-    assert "---thread-split---" in formatted
-    parts = formatted.split("---thread-split---")
-    assert len(parts) == 2
-    assert all(len(p) <= 280 for p in parts)
-    
-    # Explicit splits
-    explicit = "Post 1 ---thread-split--- Post 2"
-    assert formatter.format(explicit) == "Post 1---thread-split---Post 2"
-
 def test_linkedin_formatter_emojis_and_spacing():
     formatter = LinkedInFormatter()
     
@@ -108,19 +83,13 @@ async def test_prompt_factory_rendering():
         vocabulary_rules="Use slang",
         formatting_preferences="Bullet points"
     )
-    trend = MagicMock(
-        title="AI Frameworks",
-        summary="A summary about frameworks",
-        topic="AI",
-        metadata_json={}
-    )
     
-    sys_prompt = await factory.render_system_prompt("linkedin", persona)
+    sys_prompt = await factory.render_system_prompt(persona)
     assert "John Doe" in sys_prompt
     assert "LINKEDIN" in sys_prompt
     assert "Funny and sarcastic" in sys_prompt
     
-    usr_prompt = factory.render_user_prompt(trend, feedback="Make it cooler")
+    usr_prompt = factory.render_user_prompt("AI Frameworks", feedback="Make it cooler")
     assert "AI Frameworks" in usr_prompt
     assert "Make it cooler" in usr_prompt
 
@@ -133,25 +102,12 @@ async def test_prompt_factory_rendering():
 async def test_orchestrator_generate_success(mock_generate: MagicMock, db_session: AsyncSession):
     mock_generate.return_value = "Generated text from LLM 🐍"
     
-    # Seed required Trend in DB
-    trend = Trend(
-        id="t-1",
-        canonical_url="https://url.com",
-        title="AI agents",
-        topic="AI",
-        published_at=datetime.now(timezone.utc)
-    )
-    db_session.add(trend)
-    await db_session.commit()
-    
     orchestrator = GenerationOrchestrator()
     draft = await orchestrator.generate_draft(
         db=db_session,
-        trend_id="t-1",
-        platform="linkedin"
+        topic="AI agents"
     )
     
-    assert draft.platform == "linkedin"
     assert draft.content_text == "Generated text from LLM 🐍"
     assert draft.status == "DRAFT"
     
@@ -167,18 +123,27 @@ async def test_orchestrator_generate_success(mock_generate: MagicMock, db_sessio
 # ==========================================
 @pytest.mark.asyncio
 @patch("app.services.llm_provider.FallbackLLMProvider.generate")
-async def test_generation_api_endpoints(mock_generate: MagicMock, api_client: httpx.AsyncClient, db_session: AsyncSession):
+@patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
+@patch("app.services.publishing.linkedin.client.LinkedInClient.check_and_refresh_token")
+async def test_generation_api_endpoints(
+    mock_refresh: MagicMock,
+    mock_publish: MagicMock,
+    mock_generate: MagicMock,
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession
+):
     mock_generate.return_value = "FastAPI is awesome! 🚀"
+    mock_publish.return_value = "urn:li:share:mock_share_id"
+    mock_refresh.return_value = "mock_access_token"
     
-    # Seed Trend and Persona
-    trend = Trend(
-        id="t-2",
-        canonical_url="https://fastapi.tiangolo.com",
-        title="FastAPI update",
-        topic="AI",
-        published_at=datetime.now(timezone.utc)
+    # Seed Persona and LinkedIn Account
+    from app.models.integration import LinkedInAccount
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:mock",
+        access_token="mock",
+        expires_at=datetime.now(timezone.utc) + pytest.importorskip("datetime").timedelta(days=1)
     )
-    db_session.add(trend)
+    db_session.add(account)
     
     persona = Persona(
         id="p-1",
@@ -191,42 +156,39 @@ async def test_generation_api_endpoints(mock_generate: MagicMock, api_client: ht
     db_session.add(persona)
     await db_session.commit()
     
-    # 4.1 Test POST /trend/{trend_id}
+    # 4.1 Test POST /generation (generate draft)
     req_body = {
-        "platforms": ["linkedin", "x"],
+        "topic": "FastAPI update",
         "persona_id": "p-1"
     }
-    resp = await api_client.post("/api/v1/generation/trend/t-2", json=req_body)
+    resp = await api_client.post("/api/v1/generation", json=req_body)
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 2
-    assert data[0]["platform"] == "linkedin"
-    assert data[1]["platform"] == "x"
+    assert data["content_text"] == "FastAPI is awesome! 🚀"
+    assert data["status"] == "DRAFT"
+    draft_id = data["id"]
     
-    # 4.2 Test GET /drafts
-    resp_list = await api_client.get("/api/v1/generation/drafts?platform=x")
+    # 4.2 Test GET /generation/drafts (list drafts)
+    resp_list = await api_client.get("/api/v1/generation/drafts")
     assert resp_list.status_code == 200
     drafts_list = resp_list.json()
     assert len(drafts_list) == 1
-    assert drafts_list[0]["platform"] == "x"
-    draft_id = drafts_list[0]["id"]
+    assert drafts_list[0]["id"] == draft_id
     
-    # 4.3 Test PUT /drafts/{id}/regenerate
-    mock_generate.return_value = "FastAPI is super awesome! 🔥"
-    resp_regen = await api_client.put(
-        f"/api/v1/generation/drafts/{draft_id}/regenerate",
-        json={"feedback": "Add fire emoji"}
+    # 4.3 Test GET /generation/drafts/{id} (get draft)
+    resp_get = await api_client.get(f"/api/v1/generation/drafts/{draft_id}")
+    assert resp_get.status_code == 200
+    assert resp_get.json()["id"] == draft_id
+    
+    # 4.4 Test PUT /generation/drafts/{id} (update draft)
+    resp_update = await api_client.put(
+        f"/api/v1/generation/drafts/{draft_id}",
+        json={"content_text": "Updated content"}
     )
-    assert resp_regen.status_code == 200
-    data_regen = resp_regen.json()
-    assert data_regen["content_text"] == "FastAPI is super awesome! 🔥"
-    assert data_regen["status"] == "DRAFT"
+    assert resp_update.status_code == 200
+    assert resp_update.json()["content_text"] == "Updated content"
     
-    # 4.4 Test POST /batch
-    with patch.dict("os.environ", {"API_CRON_SECRET": "test_cron_key_123"}):
-        resp_batch = await api_client.post(
-            "/api/v1/generation/batch",
-            headers={"X-Cron-Secret": "test_cron_key_123"}
-        )
-        assert resp_batch.status_code == 202
-    assert resp_batch.json()["status"] == "batch_generation_scheduled"
+    # 4.5 Test POST /generation/drafts/{id}/publish (publish draft)
+    resp_pub = await api_client.post(f"/api/v1/generation/drafts/{draft_id}/publish")
+    assert resp_pub.status_code == 200
+    assert resp_pub.json()["status"] == "PUBLISHED"

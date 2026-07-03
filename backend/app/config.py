@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     ALERT_WEBHOOK_URL: Optional[str] = None
     ALERT_PROVIDER: str = "discord"
     
+    # CORS Settings
+    ALLOWED_ORIGINS: str = "*"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

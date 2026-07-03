@@ -110,7 +110,7 @@ async def test_client_refresh_expired_token(mock_post: MagicMock, db_session: As
 async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_session: AsyncSession):
     mock_publish.return_value = "urn:li:share:share_id_987"
     
-    # Seed account and approved draft in database
+    # Seed account and draft in database
     account = LinkedInAccount(
         linkedin_person_urn="urn:li:person:abc",
         access_token=encrypt_token("access"),
@@ -120,10 +120,8 @@ async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_sessi
     
     draft = ContentDraft(
         id="d-10",
-        platform="linkedin",
         content_text="LinkedIn post text",
-        final_content="Edited LinkedIn post text",
-        status="APPROVED"
+        status="DRAFT"
     )
     db_session.add(draft)
     await db_session.commit()
@@ -135,17 +133,18 @@ async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_sessi
     assert updated_draft.llm_metadata["linkedin_post_id"] == "urn:li:share:share_id_987"
     assert "published_url" in updated_draft.llm_metadata
 
-    # Assert database cleanup expunged the record
+    # Verify that the draft was NOT deleted but remains in database with PUBLISHED status
     db_session.expire_all()
     res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-10"))
     db_draft = res.scalars().first()
-    assert db_draft is None
+    assert db_draft is not None
+    assert db_draft.status == "PUBLISHED"
 
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
 async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock, db_session: AsyncSession):
     # Simulate API HTTP Error
-    mock_publish.side_effect = Exception("HTTP 400 Bad Request: Invalid payload structure")
+    mock_publish.side_effect = Exception("HTTP 400 Bad Request")
     
     account = LinkedInAccount(
         linkedin_person_urn="urn:li:person:abc",
@@ -156,32 +155,29 @@ async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock,
     
     draft = ContentDraft(
         id="d-11",
-        platform="linkedin",
         content_text="LinkedIn post text",
-        status="APPROVED"
+        status="DRAFT"
     )
     db_session.add(draft)
     await db_session.commit()
     
     orchestrator = PublishingOrchestrator()
-    updated_draft = await orchestrator.publish_draft(db_session, "d-11")
+    with pytest.raises(Exception):
+        await orchestrator.publish_draft(db_session, "d-11")
     
-    assert updated_draft.status == "FAILED_PUBLISHING"
-    assert "Publishing failed" in updated_draft.feedback_notes
-
-    # Assert database preserves the record for review
+    # Assert database preserves the record for review in FAILED status
     res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-11"))
     db_draft = res.scalars().first()
     assert db_draft is not None
-    assert db_draft.status == "FAILED_PUBLISHING"
+    assert db_draft.status == "FAILED"
 
 
 # ==========================================
 # 4. API CONTROLLER TESTS
 # ==========================================
 @pytest.mark.asyncio
-async def test_publishing_api_endpoints_connect_and_publish(api_client: httpx.AsyncClient, db_session: AsyncSession):
-    # 4.1 Test POST /publishing/linkedin/connect (Mocked exchange code callback)
+async def test_publishing_api_endpoints_connect(api_client: httpx.AsyncClient, db_session: AsyncSession):
+    # Test POST /publishing/linkedin/connect (Mocked exchange code callback)
     resp_connect = await api_client.post("/api/v1/publishing/linkedin/connect?code=auth_code_123")
     assert resp_connect.status_code == 200
     data_conn = resp_connect.json()
@@ -192,26 +188,6 @@ async def test_publishing_api_endpoints_connect_and_publish(api_client: httpx.As
     res_acc = await db_session.execute(select(LinkedInAccount))
     account = res_acc.scalars().first()
     assert account is not None
-    
-    # 4.2 Seed draft with status APPROVED
-    draft = ContentDraft(
-        id="d-12",
-        platform="linkedin",
-        content_text="LinkedIn post text",
-        status="APPROVED"
-    )
-    db_session.add(draft)
-    await db_session.commit()
-    
-    # 4.3 Test POST /publishing/drafts/{draft_id}/publish-now
-    with patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post") as mock_publish:
-        mock_publish.return_value = "urn:li:share:urn_test_123"
-        
-        resp_pub = await api_client.post("/api/v1/publishing/drafts/d-12/publish-now")
-        assert resp_pub.status_code == 200
-        data_pub = resp_pub.json()
-        assert data_pub["status"] == "PUBLISHED"
-        assert data_pub["llm_metadata"]["linkedin_post_id"] == "urn:li:share:urn_test_123"
 
 
 @pytest.mark.asyncio
@@ -257,15 +233,20 @@ async def test_orchestrator_linkedin_pre_flight_length_validation_failure(db_ses
     long_content = "l" * 3001
     draft = ContentDraft(
         id="d-li-long",
-        platform="linkedin",
         content_text=long_content,
-        status="APPROVED"
+        status="DRAFT"
     )
     db_session.add(draft)
     await db_session.commit()
     
     orchestrator = PublishingOrchestrator()
-    updated_draft = await orchestrator.publish_draft(db_session, "d-li-long")
+    with pytest.raises(ValueError) as exc_info:
+        await orchestrator.publish_draft(db_session, "d-li-long")
     
-    assert updated_draft.status == "FAILED_PUBLISHING"
-    assert "Pre-flight validation failed" in updated_draft.feedback_notes
+    assert "exceeds 3,000-character limit" in str(exc_info.value)
+    
+    # Verify status is FAILED in db
+    res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-li-long"))
+    db_draft = res.scalars().first()
+    assert db_draft is not None
+    assert db_draft.status == "FAILED"

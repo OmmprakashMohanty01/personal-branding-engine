@@ -1,32 +1,26 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict
 
 class GenerateRequest(BaseModel):
-    platforms: List[str]
+    topic: str
     persona_id: Optional[str] = None
 
-class TweakRequest(BaseModel):
-    feedback: str
+class ImageGenerateRequest(BaseModel):
+    topic: str
+    draft_text: Optional[str] = None
 
-class GeneratedPost(BaseModel):
+class DraftUpdatePayload(BaseModel):
     content_text: str
-    requires_image: bool
-    image_prompt: Optional[str] = None
+    image_url: Optional[str] = None
 
 class DraftResponse(BaseModel):
     id: str
-    trend_id: Optional[str] = None
     persona_id: Optional[str] = None
-    platform: str
     content_text: str
     status: str
-    image_url: Optional[str] = None
     generated_at: datetime
     llm_metadata: Dict[str, Any]
-    feedback_notes: Optional[str] = None
-    approved_at: Optional[datetime] = None
-    final_content: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+

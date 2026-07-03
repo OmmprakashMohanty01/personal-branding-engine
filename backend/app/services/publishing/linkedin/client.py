@@ -22,8 +22,13 @@ class LinkedInClient:
     async def check_and_refresh_token(self, db: AsyncSession, account: LinkedInAccount) -> str:
         """Evaluate token expiry and refresh via OAuth2 if required. Returns decrypted access token."""
         now = datetime.now(timezone.utc)
+        # Ensure expires_at is timezone-aware for safe comparison (handling naive datetime from SQLite)
+        expires_at = account.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
         # Refresh if expired or expiring in less than 48 hours
-        if account.expires_at <= now + timedelta(hours=48):
+        if expires_at <= now + timedelta(hours=48):
             logger.info(f"LinkedIn access token for account {account.id} is near expiration (within 48 hours). Refreshing...")
             
             # Retrieve encrypted refresh token

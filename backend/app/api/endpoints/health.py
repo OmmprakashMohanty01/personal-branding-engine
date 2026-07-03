@@ -9,7 +9,7 @@ from app.schemas.health import HealthResponse, DeepHealthResponse
 
 logger = logging.getLogger("branding_engine.api.health")
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(prefix="/health", tags=["Health"])
 
 
 @router.get("", response_model=HealthResponse)
