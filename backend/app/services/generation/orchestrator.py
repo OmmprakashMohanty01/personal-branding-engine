@@ -95,6 +95,12 @@ POSITIVE CONSTRAINTS (ALWAYS DO THESE):
 - Start with a direct, highly specific hook that gets straight to the point.
 - Conclude with a sharp, thought-provoking question or a definitive stance, never a summary.
 
+FORMATTING CONSTRAINTS (MANDATORY):
+- You MUST use short, highly scannable paragraphs.
+- A paragraph must NEVER exceed 3 sentences.
+- You MUST use double line breaks (\\n\\n) between every single paragraph to create white space.
+- You may use bold text for emphasis on key technical terms, but do not overuse it.
+
 Strict Output JSON Format:
 You MUST respond ONLY with a valid JSON object matching this schema (do NOT include any conversational wrapper text, return only the JSON block):
 {{
