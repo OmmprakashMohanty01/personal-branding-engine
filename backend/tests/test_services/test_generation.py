@@ -127,6 +127,37 @@ async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_genai_
     assert saved_draft.content_text == "Generated text from LLM 🐍"
 
 
+
+@pytest.mark.asyncio
+@patch("google.genai.Client")
+@patch("cohere.AsyncClient.chat")
+async def test_orchestrator_stage1_fallback_to_cohere(mock_cohere: MagicMock, mock_genai_client: MagicMock, db_session: AsyncSession):
+    # Gemini throws 429 Too Many Requests
+    mock_client_instance = MagicMock()
+    mock_client_instance.interactions.create.side_effect = Exception("429 Too Many Requests")
+    mock_genai_client.return_value = mock_client_instance
+    
+    # Cohere responds for Stage 1 (drafting) and then Stage 2 (refining)
+    mock_cohere_resp1 = MagicMock()
+    mock_cohere_resp1.text = '{"content_text": "Stage 1 draft from Cohere", "requires_image": false, "image_prompt": null}'
+    
+    mock_cohere_resp2 = MagicMock()
+    mock_cohere_resp2.text = "Stage 2 refined draft from Cohere"
+    
+    mock_cohere.side_effect = [mock_cohere_resp1, mock_cohere_resp2]
+    
+    orchestrator = GenerationOrchestrator()
+    draft = await orchestrator.generate_draft(
+        db=db_session,
+        topic="AI agent high availability"
+    )
+    
+    assert draft.content_text == "Stage 2 refined draft from Cohere"
+    assert draft.status == "DRAFT"
+    # Ensure Cohere was called twice
+    assert mock_cohere.call_count == 2
+
+
 # ==========================================
 # 4. API ROUTE TESTS
 # ==========================================

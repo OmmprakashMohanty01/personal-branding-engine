@@ -95,8 +95,20 @@ class GenerationOrchestrator:
             gemini_duration = time.time() - gemini_start
             logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
         except Exception as e:
-            logger.error(f"Stage 1 Gemini generation failed: {e}")
-            raise e
+            logger.warning(f"[STAGE 1 FALLBACK] Gemini rate limited, falling back to Cohere for drafting: {e}")
+            try:
+                import cohere
+                cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
+                co = cohere.AsyncClient(api_key=cohere_key)
+                response = await co.chat(
+                    message=stage_1_prompt,
+                    model="command-r"
+                )
+                stage1_raw = response.text
+                logger.info("[STAGE 1 FALLBACK COMPLETE - Cohere] Draft generated using Cohere")
+            except Exception as cohere_err:
+                logger.error(f"Stage 1 Cohere fallback also failed: {cohere_err}")
+                raise e
 
         # Parse Stage 1 JSON Output
         generated_text = stage1_raw
