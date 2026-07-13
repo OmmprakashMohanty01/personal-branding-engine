@@ -25,6 +25,7 @@ class ContentDraft(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     persona_id = Column(String(36), ForeignKey("personas.id", ondelete="SET NULL"), nullable=True)
+    platform = Column(String(50), default="linkedin", nullable=False)
     content_text = Column(Text, nullable=False)
     status = Column(String(20), default="DRAFT", nullable=False) # 'DRAFT', 'PUBLISHED', 'FAILED'
     generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

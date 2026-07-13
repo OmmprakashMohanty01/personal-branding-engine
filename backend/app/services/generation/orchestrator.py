@@ -128,6 +128,7 @@ class GenerationOrchestrator:
         # 5. Persist to Database
         draft = ContentDraft(
             persona_id=persona.id,
+            platform="linkedin",
             content_text=formatted_output,
             status="DRAFT",
             generated_at=datetime.now(timezone.utc),
