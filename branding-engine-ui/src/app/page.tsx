@@ -129,7 +129,7 @@ export default function DashboardPage() {
         const data: Draft[] = await res.json();
         const normalizedData = data.map(d => ({
           ...d,
-          content_text: d.content_text.replace(/\\n/g, "\n")
+          content_text: d.content_text.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n")
         }));
         setDrafts(normalizedData);
         if (selectFirst && normalizedData.length > 0) {
@@ -222,7 +222,7 @@ export default function DashboardPage() {
   const handleSelectDraft = (draft: Draft) => {
     const normalizedDraft = {
       ...draft,
-      content_text: draft.content_text.replace(/\\n/g, "\n")
+      content_text: draft.content_text.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n")
     };
     setSelectedDraft(normalizedDraft);
     setEditorText(normalizedDraft.content_text);
@@ -280,7 +280,7 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const updatedDraft = await res.json();
-        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n");
+        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n");
         showToast("Changes saved successfully to database!", "success");
         // Update both local list and active selection
         setDrafts((prev) => prev.map((d) => (d.id === updatedDraft.id ? updatedDraft : d)));
@@ -349,7 +349,7 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const updatedDraft = await res.json();
-        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n");
+        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n");
         showToast("Post successfully published to LinkedIn! 🎉", "success");
         setDrafts((prev) => prev.map((d) => (d.id === updatedDraft.id ? updatedDraft : d)));
         setSelectedDraft(updatedDraft);
