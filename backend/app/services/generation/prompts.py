@@ -45,7 +45,7 @@ FORMATTING CONSTRAINTS (MANDATORY):
 - You MUST use short, highly scannable paragraphs.
 - A paragraph must NEVER exceed 3 sentences.
 - You MUST use double line breaks (\\n\\n) between every single paragraph to create white space.
-- You may use bold text for emphasis on key technical terms, but do not overuse it."""
+- You MUST output 100% plain text. You are strictly FORBIDDEN from using any Markdown formatting, including asterisks (* or **), hashes (#), or bullet points."""
 
     USER_TEMPLATE = """Develop a piece of content based on the following topic:
 Topic: {{ topic }}
