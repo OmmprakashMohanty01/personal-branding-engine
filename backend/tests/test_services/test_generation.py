@@ -98,9 +98,16 @@ async def test_prompt_factory_rendering():
 # 3. ORCHESTRATOR TESTS
 # ==========================================
 @pytest.mark.asyncio
-@patch("app.services.llm_provider.FallbackLLMProvider.generate")
-async def test_orchestrator_generate_success(mock_generate: MagicMock, db_session: AsyncSession):
-    mock_generate.return_value = "Generated text from LLM 🐍"
+@patch("google.generativeai.GenerativeModel.generate_content_async")
+@patch("cohere.AsyncClient.chat")
+async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_gemini: MagicMock, db_session: AsyncSession):
+    mock_gemini_resp = MagicMock()
+    mock_gemini_resp.text = '{"content_text": "Generated text from LLM 🐍", "requires_image": false, "image_prompt": null}'
+    mock_gemini.return_value = mock_gemini_resp
+    
+    mock_cohere_resp = MagicMock()
+    mock_cohere_resp.text = "Generated text from LLM 🐍"
+    mock_cohere.return_value = mock_cohere_resp
     
     orchestrator = GenerationOrchestrator()
     draft = await orchestrator.generate_draft(
@@ -122,17 +129,25 @@ async def test_orchestrator_generate_success(mock_generate: MagicMock, db_sessio
 # 4. API ROUTE TESTS
 # ==========================================
 @pytest.mark.asyncio
-@patch("app.services.llm_provider.FallbackLLMProvider.generate")
+@patch("google.generativeai.GenerativeModel.generate_content_async")
+@patch("cohere.AsyncClient.chat")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.check_and_refresh_token")
 async def test_generation_api_endpoints(
     mock_refresh: MagicMock,
     mock_publish: MagicMock,
-    mock_generate: MagicMock,
+    mock_cohere: MagicMock,
+    mock_gemini: MagicMock,
     api_client: httpx.AsyncClient,
     db_session: AsyncSession
 ):
-    mock_generate.return_value = "FastAPI is awesome! 🚀"
+    mock_gemini_resp = MagicMock()
+    mock_gemini_resp.text = '{"content_text": "FastAPI is awesome! 🚀", "requires_image": false, "image_prompt": null}'
+    mock_gemini.return_value = mock_gemini_resp
+    
+    mock_cohere_resp = MagicMock()
+    mock_cohere_resp.text = "FastAPI is awesome! 🚀"
+    mock_cohere.return_value = mock_cohere_resp
     mock_publish.return_value = "urn:li:share:mock_share_id"
     mock_refresh.return_value = "mock_access_token"
     

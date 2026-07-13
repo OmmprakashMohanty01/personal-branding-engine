@@ -1,6 +1,8 @@
 import logging
 import json
 import re
+import os
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,8 @@ class GenerationOrchestrator:
         self.prompt_factory = PromptFactory()
         self.linkedin_formatter = LinkedInFormatter()
         self.llm_provider = FallbackLLMProvider()
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.cohere_api_key = os.getenv("COHERE_API_KEY")
 
     async def _get_default_persona(self, db: AsyncSession) -> Persona:
         """Find or create default persona representation."""
@@ -70,61 +74,46 @@ class GenerationOrchestrator:
             persona = await self._get_default_persona(db)
             
         # 2. Render Prompts
-        system_prompt = f"""You are an elite technical professional and senior software engineer writing for a highly technical LinkedIn audience. Your sole objective is to write posts that are completely indistinguishable from a seasoned human expert. 
-
-Your writing style is governed by the following persona guidelines:
-Name: {persona.name}
-Tone: {persona.tone_description}
-Vocabulary Rules: {persona.vocabulary_rules}
-Formatting Preferences: {persona.formatting_preferences}
-
-You must strictly obey the following formatting and tone constraints:
-
-NEGATIVE CONSTRAINTS (NEVER DO THESE):
-- NEVER use typical AI transition phrases (e.g., "Moreover", "Furthermore", "In today's world", "In the rapidly evolving landscape", "Delve into", "Testament to").
-- NEVER use a formulaic structure (Generic Intro -> Bullet points -> Generic Summary).
-- NEVER make broad, generic claims. 
-- NEVER use excessive buzzwords or overly dramatic language (e.g., "lurking in the shadows", "revolutionary").
-- Limit emojis to an absolute maximum of ONE per post, and only if strictly necessary. 
-
-POSITIVE CONSTRAINTS (ALWAYS DO THESE):
-- Write with a natural, crisp, and audience-aware tone.
-- Vary your sentence length and rhythm. Mix short, punchy sentences with longer, analytical ones.
-- Use precise, industry-specific vocabulary and technical accuracy.
-- Introduce original insights, judgment, or practical trade-offs rather than just stating facts.
-- Start with a direct, highly specific hook that gets straight to the point.
-- Conclude with a sharp, thought-provoking question or a definitive stance, never a summary.
-
-FORMATTING CONSTRAINTS (MANDATORY):
-- You MUST use short, highly scannable paragraphs.
-- A paragraph must NEVER exceed 3 sentences.
-- You MUST use double line breaks (\\n\\n) between every single paragraph to create white space.
-- You may use bold text for emphasis on key technical terms, but do not overuse it.
-
-Strict Output JSON Format:
-You MUST respond ONLY with a valid JSON object matching this schema (do NOT include any conversational wrapper text, return only the JSON block):
-{{
-  "content_text": "The formatted post text",
-  "requires_image": false,
-  "image_prompt": null
-}}"""
+        logger.info(f"[PIPELINE START] Processing topic: {topic}")
+        
+        system_prompt_gemini = await self.prompt_factory.render_system_prompt(persona, db=db)
         user_prompt = self.prompt_factory.render_user_prompt(topic, feedback)
         
-        # 3. Invoke LLM Provider
-        logger.info(f"Generating LinkedIn content for topic: {topic}")
-        raw_output = await self.llm_provider.generate(
-            prompt=user_prompt,
-            system_instruction=system_prompt,
-            temperature=0.7
-        )
-        
-        generated_text = raw_output
+        # 3. Stage 1: Google Gemini 1.5 Flash
+        gemini_start = time.time()
+        stage1_raw = ""
+        try:
+            import google.generativeai as genai
+            gemini_key = self.gemini_api_key or os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
+            
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                system_instruction=system_prompt_gemini
+            )
+            config = genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=1000
+            )
+            
+            response = await model.generate_content_async(
+                user_prompt,
+                generation_config=config
+            )
+            stage1_raw = response.text
+            gemini_duration = time.time() - gemini_start
+            logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
+        except Exception as e:
+            logger.error(f"Stage 1 Gemini generation failed: {e}")
+            raise e
+
+        # Parse Stage 1 JSON Output
+        generated_text = stage1_raw
         requires_image = False
         image_prompt = None
-
-        # Parse LLM JSON Output
+        
         try:
-            clean_output = raw_output.strip()
+            clean_output = stage1_raw.strip()
             # Strip markdown json code blocks if present
             code_block_match = re.search(r"```json\s*(.*?)\s*```", clean_output, re.DOTALL)
             if code_block_match:
@@ -145,33 +134,59 @@ You MUST respond ONLY with a valid JSON object matching this schema (do NOT incl
                 if content_text_match:
                     parsed_data["content_text"] = content_text_match.group(1)
                 if requires_image_match:
-                    parsed_data["requires_image"] = requires_image_match.group(1).lower() == "true"
+                     parsed_data["requires_image"] = requires_image_match.group(1).lower() == "true"
                 if image_prompt_match:
-                    parsed_data["image_prompt"] = image_prompt_match.group(1)
+                     parsed_data["image_prompt"] = image_prompt_match.group(1)
                 
                 if not parsed_data:
                     raise ValueError("Could not parse JSON even with robust regex extraction")
             
-            generated_text = parsed_data.get("content_text", "")
+            generated_text = parsed_data.get("content_text", stage1_raw)
             requires_image = parsed_data.get("requires_image", False)
             image_prompt = parsed_data.get("image_prompt")
         except Exception as e:
-            logger.error(f"Failed to parse LLM JSON response: {e}. Falling back to treating entire output as plain text. Raw output: {raw_output}")
-            generated_text = raw_output
+            logger.error(f"Failed to parse Stage 1 JSON response: {e}. Falling back to raw text. Raw output: {stage1_raw}")
+            generated_text = stage1_raw
 
-        # 4. Post-Process via LinkedIn Formatter
-        formatted_output = self.linkedin_formatter.format(generated_text)
+        # 4. Stage 2: Cohere Command R (Humanized Tone & Style Editing)
+        cohere_start = time.time()
+        final_text = generated_text
+        pipeline_model = "gemini-1.5-flash"
+        try:
+            import cohere
+            cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
             
-        # 5. Persist to Database
+            # Initialize async client
+            co = cohere.AsyncClient(api_key=cohere_key)
+            
+            response = await co.chat(
+                message=generated_text,
+                model="command-r",
+                preamble=self.prompt_factory.COHERE_SYSTEM_TEMPLATE
+            )
+            final_text = response.text
+            cohere_duration = time.time() - cohere_start
+            logger.info(f"[STAGE 2 COMPLETE - Cohere] Tone refinement completed in {cohere_duration:.2f}s")
+            pipeline_model = "gemini-cohere-pipeline"
+        except Exception as e:
+            logger.warning(f"[PIPELINE FALLBACK TRIGGERED] Cohere unavailable, defaulting to Gemini draft. Reason: {e}")
+            final_text = generated_text
+
+        # 5. Post-Process & Persist to Database
+        # Format the refined output
+        formatted_output = self.linkedin_formatter.format(final_text)
+        # Violently crush 3 or more consecutive line breaks (including spaces/carriage returns) down to exactly two clean line breaks
+        crushed_output = re.sub(r'(?:\r?\n\s*){2,}', '\n\n', formatted_output).strip()
+        
         draft = ContentDraft(
             persona_id=persona.id,
             platform="linkedin",
-            content_text=formatted_output,
+            content_text=crushed_output,
             status="DRAFT",
             generated_at=datetime.now(timezone.utc),
             llm_metadata={
-                "model": getattr(self.llm_provider, "primary_name", "unknown"),
-                "prompt_length": len(user_prompt) + len(system_prompt),
+                "model": pipeline_model,
+                "prompt_length": len(user_prompt) + len(system_prompt_gemini),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "requires_image": requires_image,
                 "image_prompt": image_prompt
