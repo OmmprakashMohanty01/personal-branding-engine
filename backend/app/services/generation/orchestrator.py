@@ -88,7 +88,7 @@ class GenerationOrchestrator:
             
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name="gemini-1.5-flash-latest",
                 system_instruction=system_prompt_gemini
             )
             config = genai.types.GenerationConfig(
@@ -151,7 +151,7 @@ class GenerationOrchestrator:
         # 4. Stage 2: Cohere Command R (Humanized Tone & Style Editing)
         cohere_start = time.time()
         final_text = generated_text
-        pipeline_model = "gemini-1.5-flash"
+        pipeline_model = "gemini & cohere"
         try:
             import cohere
             cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
@@ -167,7 +167,7 @@ class GenerationOrchestrator:
             final_text = response.text
             cohere_duration = time.time() - cohere_start
             logger.info(f"[STAGE 2 COMPLETE - Cohere] Tone refinement completed in {cohere_duration:.2f}s")
-            pipeline_model = "gemini-cohere-pipeline"
+            pipeline_model = "gemini & cohere"
         except Exception as e:
             logger.warning(f"[PIPELINE FALLBACK TRIGGERED] Cohere unavailable, defaulting to Gemini draft. Reason: {e}")
             final_text = generated_text
