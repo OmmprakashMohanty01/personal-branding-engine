@@ -21,7 +21,10 @@ interface Draft {
 }
 
 export default function DashboardPage() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  let API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  if (API_BASE && !API_BASE.endsWith("/api/v1")) {
+    API_BASE = `${API_BASE.replace(/\/$/, "")}/api/v1`;
+  }
 
   // System states
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -70,30 +73,51 @@ export default function DashboardPage() {
     }
   };
 
-  // 2. Simulate LinkedIn connection
-  const connectLinkedIn = async () => {
-    try {
-      setIsConnecting(true);
-      // Calls connection endpoint with mock code to seed the mock account in SQLite database
-      const res = await fetch(
-        `${API_BASE}/publishing/linkedin/connect?code=sandbox_dev_token_123&redirect_uri=https://localhost:8000/api/v1/publishing/linkedin/connect`,
-        { method: "POST" }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setLinkedinConnected(true);
-        setLinkedinUrn(data.linkedin_person_urn);
-        showToast("LinkedIn account connected successfully (Simulated)!", "success");
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        showToast(errorData.detail || "Failed to link LinkedIn account.", "error");
+  // 2. LinkedIn connection (Supports sandbox simulation or real redirect)
+  const connectLinkedIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    const client_id = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID;
+    
+    // Sandbox bypass if client ID is mock/empty or if Shift key is held during click
+    if (!client_id || client_id === "mock_client_id" || e.shiftKey) {
+      try {
+        setIsConnecting(true);
+        const redirectUri = window.location.origin;
+        const res = await fetch(
+          `${API_BASE}/publishing/linkedin/connect?code=sandbox_dev_token_123&redirect_uri=${encodeURIComponent(redirectUri)}`,
+          { method: "POST" }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setLinkedinConnected(true);
+          setLinkedinUrn(data.linkedin_person_urn);
+          showToast("LinkedIn account connected successfully (Simulated)!", "success");
+        } else {
+          const errorData = await res.json().catch(() => ({}));
+          showToast(errorData.detail || "Failed to link LinkedIn account.", "error");
+        }
+      } catch (err) {
+        console.error("LinkedIn link error:", err);
+        showToast("Network error: Failed to connect LinkedIn.", "error");
+      } finally {
+        setIsConnecting(false);
       }
-    } catch (err) {
-      console.error("LinkedIn link error:", err);
-      showToast("Network error: Failed to connect LinkedIn.", "error");
-    } finally {
-      setIsConnecting(false);
+      return;
     }
+
+    // Real OAuth flow redirect to LinkedIn consent screen
+    const redirect_uri = window.location.origin;
+    const scope = "openid profile email w_member_social";
+    const state = Math.random().toString(36).substring(2, 15);
+    localStorage.setItem("linkedin_oauth_state", state);
+
+    const authUrl = `https://www.linkedin.com/oauth/v2/authorization` +
+      `?response_type=code` +
+      `&client_id=${client_id}` +
+      `&redirect_uri=${encodeURIComponent(redirect_uri)}` +
+      `&scope=${encodeURIComponent(scope)}` +
+      `&state=${state}`;
+
+    window.location.href = authUrl;
   };
 
   // 3. Load Drafts from history
@@ -142,6 +166,46 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Check if redirecting from LinkedIn OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+
+    if (code) {
+      // Validate state to prevent CSRF
+      const savedState = localStorage.getItem("linkedin_oauth_state");
+      localStorage.removeItem("linkedin_oauth_state");
+
+      const completeConnection = async () => {
+        try {
+          setIsConnecting(true);
+          const redirectUri = window.location.origin;
+          const res = await fetch(
+            `${API_BASE}/publishing/linkedin/connect?code=${code}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+            { method: "POST" }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            setLinkedinConnected(true);
+            setLinkedinUrn(data.linkedin_person_urn);
+            showToast("LinkedIn account connected successfully!", "success");
+          } else {
+            const errorData = await res.json().catch(() => ({}));
+            showToast(errorData.detail || "Failed to link LinkedIn account.", "error");
+          }
+        } catch (err) {
+          console.error("LinkedIn link error:", err);
+          showToast("Network error: Failed to connect LinkedIn.", "error");
+        } finally {
+          setIsConnecting(false);
+          // Clear query parameters from URL path
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      };
+
+      completeConnection();
+    }
+
     checkLinkedInStatus();
     loadDrafts(true);
     fetchLiveNews();

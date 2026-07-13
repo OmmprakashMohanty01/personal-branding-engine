@@ -29,7 +29,7 @@ async def check_linkedin_status(db: AsyncSession = Depends(get_db)):
 @router.post("/linkedin/connect")
 async def connect_linkedin(
     code: str = Query(..., description="OAuth2 authorization code returned by LinkedIn redirect"),
-    redirect_uri: str = Query("https://localhost:8000/api/v1/publishing/linkedin/connect", description="The registered redirect URI"),
+    redirect_uri: str | None = Query(None, description="The registered redirect URI"),
     db: AsyncSession = Depends(get_db)
 ):
     """Callback endpoint to exchange authorization code for access/refresh tokens and connect account."""
@@ -68,6 +68,11 @@ async def connect_linkedin(
     # 2. For real tokens, resolve redirect URI and client credentials
     env_redirect = os.getenv("REDIRECT_URI")
     final_redirect_uri = env_redirect or redirect_uri
+    if not final_redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect_uri must be provided in the query parameters or configured via the REDIRECT_URI environment variable."
+        )
 
     try:
         # Exchange code for token pair
