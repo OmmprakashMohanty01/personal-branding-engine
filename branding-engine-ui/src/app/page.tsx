@@ -127,9 +127,13 @@ export default function DashboardPage() {
       const res = await fetch(`${API_BASE}/generation/drafts`);
       if (res.ok) {
         const data: Draft[] = await res.json();
-        setDrafts(data);
-        if (selectFirst && data.length > 0) {
-          handleSelectDraft(data[0]);
+        const normalizedData = data.map(d => ({
+          ...d,
+          content_text: d.content_text.replace(/\\n/g, "\n")
+        }));
+        setDrafts(normalizedData);
+        if (selectFirst && normalizedData.length > 0) {
+          handleSelectDraft(normalizedData[0]);
         }
       } else {
         showToast("Failed to retrieve draft history.", "error");
@@ -216,9 +220,13 @@ export default function DashboardPage() {
 
   // 4. Handle selecting a draft
   const handleSelectDraft = (draft: Draft) => {
-    setSelectedDraft(draft);
-    setEditorText(draft.content_text);
-    setEditorImageUrl(draft.llm_metadata?.image_url || "");
+    const normalizedDraft = {
+      ...draft,
+      content_text: draft.content_text.replace(/\\n/g, "\n")
+    };
+    setSelectedDraft(normalizedDraft);
+    setEditorText(normalizedDraft.content_text);
+    setEditorImageUrl(normalizedDraft.llm_metadata?.image_url || "");
   };
 
   // 5. Generate AI Draft
@@ -272,6 +280,7 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const updatedDraft = await res.json();
+        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n");
         showToast("Changes saved successfully to database!", "success");
         // Update both local list and active selection
         setDrafts((prev) => prev.map((d) => (d.id === updatedDraft.id ? updatedDraft : d)));
@@ -340,6 +349,7 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const updatedDraft = await res.json();
+        updatedDraft.content_text = updatedDraft.content_text.replace(/\\n/g, "\n");
         showToast("Post successfully published to LinkedIn! 🎉", "success");
         setDrafts((prev) => prev.map((d) => (d.id === updatedDraft.id ? updatedDraft : d)));
         setSelectedDraft(updatedDraft);
@@ -528,7 +538,7 @@ export default function DashboardPage() {
                   id="editor-textarea"
                   value={editorText}
                   onChange={(e) => setEditorText(e.target.value)}
-                  className="w-full bg-black/30 border border-gray-850/80 focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/20 text-gray-200 text-sm leading-relaxed rounded-xl p-4 resize-y min-h-[300px] outline-none transition-all duration-300 font-sans"
+                  className="w-full bg-black/30 border border-gray-850/80 focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/20 text-gray-200 text-sm leading-relaxed rounded-xl p-4 resize-y min-h-[300px] outline-none transition-all duration-300 font-sans whitespace-pre-wrap"
                   placeholder="Post content text editor..."
                 />
 
@@ -685,7 +695,7 @@ export default function DashboardPage() {
                           {draft.status}
                         </span>
                       </div>
-                      <p className="text-gray-300 text-xs leading-relaxed font-medium">
+                      <p className="text-gray-300 text-xs leading-relaxed font-medium whitespace-pre-wrap">
                         {snippet || "(No content)"}
                       </p>
                     </div>
