@@ -144,13 +144,18 @@ async def generate_content(
     payload: GenerateRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Generate a LinkedIn post draft using Groq."""
+    """Generate a LinkedIn post draft using Gemini and Cohere."""
     try:
-        draft = await gen_orchestrator.generate_draft(
+        orchestrator = GenerationOrchestrator()
+        draft = await orchestrator.generate_draft(
             db=db,
             topic=payload.topic,
             persona_id=payload.persona_id
         )
+        if draft.llm_metadata:
+            metadata = dict(draft.llm_metadata)
+            metadata["model"] = "gemini-3.5-flash & cohere"
+            draft.llm_metadata = metadata
         return draft
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
