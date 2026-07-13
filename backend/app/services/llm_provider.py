@@ -68,16 +68,15 @@ class GroqProvider(BaseLLMProvider):
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini API Provider implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.5-flash"):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model_name = model
         
         if not self.api_key:
             raise ValueError("Gemini API key is missing. Set GEMINI_API_KEY environment variable.")
             
-        import google.generativeai as genai
-        genai.configure(api_key=self.api_key)
-        self.genai = genai
+        from google import genai
+        self.client = genai.Client(api_key=self.api_key)
 
     async def generate(
         self,
@@ -88,21 +87,12 @@ class GeminiProvider(BaseLLMProvider):
     ) -> str:
         logger.info(f"Sending request to Gemini using model {self.model_name}")
         
-        model = self.genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=system_instruction
+        stage_1_prompt = f"{system_instruction}\n\nUser Input/Topic: {prompt}" if system_instruction else prompt
+        interaction = self.client.interactions.create(
+            model=self.model_name,
+            input=stage_1_prompt
         )
-        
-        config = self.genai.types.GenerationConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens
-        )
-        
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=config
-        )
-        return response.text
+        return interaction.output_text
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -187,7 +177,7 @@ class FallbackLLMProvider(BaseLLMProvider):
                 elif name == "gemini":
                     self.providers[name] = GeminiProvider(
                         api_key=config.get("api_key"),
-                        model=config.get("model", "gemini-1.5-flash")
+                        model=config.get("model", "gemini-3.5-flash")
                     )
                 elif name == "openai":
                     self.providers[name] = OpenAIProvider(

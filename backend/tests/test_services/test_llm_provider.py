@@ -55,17 +55,15 @@ def mock_openai() -> Generator[MagicMock, None, None]:
 
 @pytest.fixture
 def mock_gemini() -> Generator[MagicMock, None, None]:
-    with patch("google.generativeai.GenerativeModel") as mock_model_class, \
-         patch("google.generativeai.configure") as mock_configure:
-        mock_model_instance = MagicMock()
-        mock_model_class.return_value = mock_model_instance
+    with patch("google.genai.Client") as mock_client_class:
+        mock_client_instance = MagicMock()
+        mock_client_class.return_value = mock_client_instance
         
-        mock_response = MagicMock()
-        mock_response.text = "Response from Gemini"
+        mock_interaction = MagicMock()
+        mock_interaction.output_text = "Response from Gemini"
+        mock_client_instance.interactions.create.return_value = mock_interaction
         
-        mock_model_instance.generate_content_async = AsyncMock(return_value=mock_response)
-        
-        yield mock_model_class
+        yield mock_client_class
 
 @pytest.mark.asyncio
 async def test_groq_provider_success(mock_groq: MagicMock):
@@ -83,10 +81,10 @@ async def test_openai_provider_success(mock_openai: MagicMock):
 
 @pytest.mark.asyncio
 async def test_gemini_provider_success(mock_gemini: MagicMock):
-    provider = GeminiProvider(api_key="test-key", model="gemini-1.5-flash")
+    provider = GeminiProvider(api_key="test-key", model="gemini-3.5-flash")
     result = await provider.generate(prompt="Hello", system_instruction="Be smart")
     assert result == "Response from Gemini"
-    mock_gemini.assert_called_once_with(model_name="gemini-1.5-flash", system_instruction="Be smart")
+    mock_gemini.assert_called_once_with(api_key="test-key")
 
 @pytest.mark.asyncio
 async def test_fallback_primary_success(mock_groq: MagicMock, mock_gemini: MagicMock):
@@ -108,9 +106,8 @@ async def test_fallback_primary_success(mock_groq: MagicMock, mock_gemini: Magic
     groq_instance.client.chat.completions.create.assert_called_once()
     
     gemini_instance = fallback_provider.providers["gemini"]
-    # Check that generate_content_async was not called
-    # gemini_instance would use Google's GenerativeModel class mocked above
-    mock_gemini.return_value.generate_content_async.assert_not_called()
+    # Check that interactions.create was not called
+    mock_gemini.return_value.interactions.create.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_fallback_primary_fails_secondary_succeeds(mock_groq: MagicMock, mock_gemini: MagicMock):
@@ -131,7 +128,7 @@ async def test_fallback_primary_fails_secondary_succeeds(mock_groq: MagicMock, m
     
     # Verify both were tried, with Gemini succeeding
     mock_groq.return_value.chat.completions.create.assert_called_once()
-    mock_gemini.return_value.generate_content_async.assert_called_once()
+    mock_gemini.return_value.interactions.create.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_fallback_all_fail(mock_groq: MagicMock, mock_openai: MagicMock):

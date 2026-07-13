@@ -98,12 +98,14 @@ async def test_prompt_factory_rendering():
 # 3. ORCHESTRATOR TESTS
 # ==========================================
 @pytest.mark.asyncio
-@patch("google.generativeai.GenerativeModel.generate_content_async")
+@patch("google.genai.Client")
 @patch("cohere.AsyncClient.chat")
-async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_gemini: MagicMock, db_session: AsyncSession):
-    mock_gemini_resp = MagicMock()
-    mock_gemini_resp.text = '{"content_text": "Generated text from LLM 🐍", "requires_image": false, "image_prompt": null}'
-    mock_gemini.return_value = mock_gemini_resp
+async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_genai_client: MagicMock, db_session: AsyncSession):
+    mock_client_instance = MagicMock()
+    mock_interaction = MagicMock()
+    mock_interaction.output_text = '{"content_text": "Generated text from LLM 🐍", "requires_image": false, "image_prompt": null}'
+    mock_client_instance.interactions.create.return_value = mock_interaction
+    mock_genai_client.return_value = mock_client_instance
     
     mock_cohere_resp = MagicMock()
     mock_cohere_resp.text = "Generated text from LLM 🐍"
@@ -129,7 +131,7 @@ async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_gemini
 # 4. API ROUTE TESTS
 # ==========================================
 @pytest.mark.asyncio
-@patch("google.generativeai.GenerativeModel.generate_content_async")
+@patch("google.genai.Client")
 @patch("cohere.AsyncClient.chat")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.check_and_refresh_token")
@@ -137,13 +139,15 @@ async def test_generation_api_endpoints(
     mock_refresh: MagicMock,
     mock_publish: MagicMock,
     mock_cohere: MagicMock,
-    mock_gemini: MagicMock,
+    mock_genai_client: MagicMock,
     api_client: httpx.AsyncClient,
     db_session: AsyncSession
 ):
-    mock_gemini_resp = MagicMock()
-    mock_gemini_resp.text = '{"content_text": "FastAPI is awesome! 🚀", "requires_image": false, "image_prompt": null}'
-    mock_gemini.return_value = mock_gemini_resp
+    mock_client_instance = MagicMock()
+    mock_interaction = MagicMock()
+    mock_interaction.output_text = '{"content_text": "FastAPI is awesome! 🚀", "requires_image": false, "image_prompt": null}'
+    mock_client_instance.interactions.create.return_value = mock_interaction
+    mock_genai_client.return_value = mock_client_instance
     
     mock_cohere_resp = MagicMock()
     mock_cohere_resp.text = "FastAPI is awesome! 🚀"

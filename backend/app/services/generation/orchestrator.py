@@ -83,24 +83,17 @@ class GenerationOrchestrator:
         gemini_start = time.time()
         stage1_raw = ""
         try:
-            import google.generativeai as genai
+            from google import genai
             gemini_key = self.gemini_api_key or os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
             
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash-latest",
-                system_instruction=system_prompt_gemini
-            )
-            config = genai.types.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=1000
-            )
+            client = genai.Client(api_key=gemini_key)
+            stage_1_prompt = f"{system_prompt_gemini}\n\nUser Input/Topic: {user_prompt}"
             
-            response = await model.generate_content_async(
-                user_prompt,
-                generation_config=config
+            interaction = client.interactions.create(
+                model="gemini-3.5-flash",
+                input=stage_1_prompt
             )
-            stage1_raw = response.text
+            stage1_raw = interaction.output_text
             gemini_duration = time.time() - gemini_start
             logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
         except Exception as e:
