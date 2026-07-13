@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.content import Persona, ContentDraft
-from app.services.llm_provider import FallbackLLMProvider
 from app.services.generation.prompts import PromptFactory
 from app.services.generation.formatters import LinkedInFormatter
 
@@ -21,7 +20,6 @@ class GenerationOrchestrator:
     def __init__(self):
         self.prompt_factory = PromptFactory()
         self.linkedin_formatter = LinkedInFormatter()
-        self.llm_provider = FallbackLLMProvider()
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.cohere_api_key = os.getenv("COHERE_API_KEY")
 

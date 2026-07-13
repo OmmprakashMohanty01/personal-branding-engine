@@ -76,16 +76,17 @@ STRICT RECIPE:
 """
         user_prompt = f"Topic: {topic}\n\nDraft Text: {draft_text}"
         
-        llm_provider = gen_orchestrator.llm_provider
+        from google import genai
+        gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
+        client = genai.Client(api_key=gemini_key)
         
         print(f"Generating dynamic image prompt via LLM for topic: {topic}")
-        prompt = await llm_provider.generate(
-            prompt=user_prompt,
-            system_instruction=system_prompt,
-            temperature=0.7,
-            max_tokens=150
+        stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
+        interaction = client.interactions.create(
+            model="gemini-3.5-flash",
+            input=stage_1_prompt
         )
-        prompt = prompt.strip().replace('"', "'")
+        prompt = interaction.output_text.strip().replace('"', "'")
         print(f"Generated prompt: {prompt}")
 
         headers = {"Authorization": f"Bearer {hf_api_key}"}
