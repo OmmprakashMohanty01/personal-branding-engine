@@ -104,7 +104,7 @@ class GenerationOrchestrator:
                     model="command-a-plus-05-2026",
                     messages=[{"role": "user", "content": stage_1_prompt}]
                 )
-                stage1_raw = response.message.content[0].text if (response.message and response.message.content) else ""
+                stage1_raw = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "") if (response.message and response.message.content) else ""
                 logger.info("[STAGE 1 FALLBACK COMPLETE - Cohere] Draft generated using Cohere")
             except Exception as cohere_err:
                 logger.error(f"Stage 1 Cohere fallback also failed: {cohere_err}")
@@ -169,7 +169,7 @@ class GenerationOrchestrator:
                     {"role": "user", "content": generated_text}
                 ]
             )
-            final_text = response.message.content[0].text if (response.message and response.message.content) else ""
+            final_text = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "") if (response.message and response.message.content) else ""
             cohere_duration = time.time() - cohere_start
             logger.info(f"[STAGE 2 COMPLETE - Cohere] Tone refinement completed in {cohere_duration:.2f}s")
             pipeline_model = "gemini-3.5-flash & cohere"
