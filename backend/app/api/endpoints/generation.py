@@ -224,35 +224,6 @@ async def publish_draft_endpoint(
     """Immediately publish a draft to LinkedIn."""
     import traceback
     try:
-        # Check for local sandbox bypass
-        env_name = os.getenv("ENV", "development").lower()
-        has_token = bool(os.getenv("LINKEDIN_ACCESS_TOKEN"))
-        
-        # If running in local development or if LinkedIn Access Token is missing, use local sandbox bypass
-        if env_name == "development" or not has_token:
-            print("Engaging local sandbox publishing bypass.")
-            stmt = select(ContentDraft).where(ContentDraft.id == draft_id)
-            res = await db.execute(stmt)
-            draft = res.scalars().first()
-            if not draft:
-                raise HTTPException(status_code=404, detail="Draft not found")
-            
-            # Handle local image URL gracefully by warning and not trying to pass it to external API
-            image_url = (draft.llm_metadata or {}).get("image_url")
-            if image_url and ("localhost" in image_url or "127.0.0.1" in image_url):
-                print(f"Warning: Local image URL detected: {image_url}. Bypassing external upload/download.")
-
-            draft.status = "PUBLISHED"
-            metadata = dict(draft.llm_metadata or {})
-            metadata["linkedin_post_id"] = "urn:li:share:mock_sandbox_bypass_id"
-            metadata["published_url"] = "https://www.linkedin.com/feed/update/urn:li:share:mock_sandbox_bypass_id"
-            metadata["sandbox_message"] = "Mock published successfully for local testing"
-            draft.llm_metadata = metadata
-            
-            await db.commit()
-            await db.refresh(draft)
-            return draft
-
         # Real publishing path
         draft = await pub_orchestrator.publish_draft(db, draft_id)
         

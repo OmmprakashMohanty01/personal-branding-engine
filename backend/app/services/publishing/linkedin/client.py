@@ -111,11 +111,7 @@ class LinkedInClient:
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload, headers=headers)
             
-            # Fallback simulator for testing
-            if resp.status_code != 201 and "mock" in access_token:
-                logger.warning("Mock access token used. Simulating successful publication.")
-                return "urn:li:share:mock_share_id"
-                
+
             if resp.status_code not in (200, 201):
                 raise httpx.HTTPStatusError(
                     f"LinkedIn publishing API returned non-strict success status {resp.status_code}.",
