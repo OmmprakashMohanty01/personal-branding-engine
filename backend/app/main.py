@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints.generation import router as generation_router
 from app.api.endpoints.publishing import router as publishing_router
 from app.api.endpoints.health import router as health_router
+from app.api.endpoints.automation import router as automation_router
 from app.config import settings
 
 app = FastAPI(
@@ -33,6 +34,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(generation_router, prefix="/api/v1")
 app.include_router(publishing_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(automation_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():

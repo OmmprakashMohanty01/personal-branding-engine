@@ -250,3 +250,74 @@ async def test_generation_api_endpoints(
     resp_pub = await api_client.post(f"/api/v1/generation/drafts/{draft_id}/publish")
     assert resp_pub.status_code == 200
     assert resp_pub.json()["status"] == "PUBLISHED"
+
+
+@pytest.mark.asyncio
+@patch("google.genai.Client")
+@patch("cohere.AsyncClientV2.chat")
+@patch("app.api.endpoints.automation.generate_metaphorical_image_helper")
+@patch("app.api.endpoints.automation.datetime")
+async def test_daily_draft_automation_success(
+    mock_datetime: MagicMock,
+    mock_generate_img: MagicMock,
+    mock_cohere: MagicMock,
+    mock_genai_client: MagicMock,
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession
+):
+    # Set weekday to Monday (0)
+    mock_datetime.today.return_value.weekday.return_value = 0
+    
+    # Mock CRON_SECRET_KEY env var
+    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key", "HUGGINGFACE_API_KEY": "hf_key"}):
+        # Mock Gemini response for draft generation
+        mock_client_instance = MagicMock()
+        mock_interaction = MagicMock()
+        mock_interaction.output_text = '{"content_text": "Monday AI update!", "requires_image": true, "image_prompt": "AI robot reading news"}'
+        mock_client_instance.interactions.create.return_value = mock_interaction
+        mock_genai_client.return_value = mock_client_instance
+        
+        # Mock generate_metaphorical_image_helper response
+        mock_generate_img.return_value = "data:image/jpeg;base64,fake_image_bytes"
+        
+        # Call endpoint without secret header
+        resp_no_header = await api_client.post("/api/v1/automation/daily-draft")
+        assert resp_no_header.status_code == 422  # Missing header validation error
+        
+        # Call endpoint with invalid secret
+        resp_invalid = await api_client.post(
+            "/api/v1/automation/daily-draft",
+            headers={"X-Cron-Secret": "wrong_secret"}
+        )
+        assert resp_invalid.status_code == 401
+        assert "Invalid Cron Secret" in resp_invalid.json()["detail"]
+        
+        # Call endpoint with valid secret
+        resp_valid = await api_client.post(
+            "/api/v1/automation/daily-draft",
+            headers={"X-Cron-Secret": "super_secret_cron_key"}
+        )
+        assert resp_valid.status_code == 200
+        data = resp_valid.json()
+        assert data["content_text"] == "Monday AI update!"
+        assert data["status"] == "DRAFT"
+        assert "image_url" in data["llm_metadata"]
+        assert data["llm_metadata"]["image_url"] == "data:image/jpeg;base64,fake_image_bytes"
+
+
+@pytest.mark.asyncio
+@patch("app.api.endpoints.automation.datetime")
+async def test_daily_draft_automation_sunday(
+    mock_datetime: MagicMock,
+    api_client: httpx.AsyncClient,
+):
+    # Set weekday to Sunday (6)
+    mock_datetime.today.return_value.weekday.return_value = 6
+    
+    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key"}):
+        resp = await api_client.post(
+            "/api/v1/automation/daily-draft",
+            headers={"X-Cron-Secret": "super_secret_cron_key"}
+        )
+        assert resp.status_code == 200
+        assert "Rest day" in resp.json()["detail"]

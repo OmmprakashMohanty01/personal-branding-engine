@@ -47,25 +47,19 @@ async def get_live_news():
         ]
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)
-async def generate_image_endpoint(
-    payload: ImageGenerateRequest,
-    request: Request
-):
-    """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
-    try:
-        hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
-        if not hf_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="HUGGINGFACE_API_KEY is missing from environment. Please add it to your .env file."
-            )
-        
-        hf_api_key = hf_api_key.strip('"').strip("'")
-        topic = payload.topic or "technology branding"
-        draft_text = payload.draft_text or ""
-        
-        # Asynchronously call the FallbackLLMProvider to write the metaphorical image prompt dynamically
-        system_prompt = """
+async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
+    """Helper function to generate a base64 encoded metaphorical illustration image."""
+    hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
+    if not hf_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="HUGGINGFACE_API_KEY is missing from environment. Please add it to your .env file."
+        )
+    
+    hf_api_key = hf_api_key.strip('"').strip("'")
+    
+    # Asynchronously call the FallbackLLMProvider to write the metaphorical image prompt dynamically
+    system_prompt = """
 You are a brilliant graphic designer creating thumbnails for a tech blog. 
 Read the provided text and write a single, highly detailed image generation prompt (maximum 50 words). 
 
@@ -76,82 +70,88 @@ STRICT RECIPE:
 4. Example: "A glowing fiber optic cable woven into the shape of the Swiss Alps, dark cinematic studio lighting, 8k resolution, macro photography."
 5. DO NOT use generic floating glowing dots or plain data streams. Make it specific to the text.
 """
-        user_prompt = f"Topic: {topic}\n\nDraft Text: {draft_text}"
-        stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
+    user_prompt = f"Topic: {topic}\n\nDraft Text: {draft_text}"
+    stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
+    
+    print(f"Generating dynamic image prompt via LLM for topic: {topic}")
+    try:
+        from google import genai
+        gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
+        client = genai.Client(api_key=gemini_key)
         
-        print(f"Generating dynamic image prompt via LLM for topic: {topic}")
+        interaction = client.interactions.create(
+            model="gemini-3.5-flash",
+            input=stage_1_prompt
+        )
+        prompt = interaction.output_text.strip().replace('"', "'")
+    except Exception as gemini_err:
+        logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
         try:
-            from google import genai
-            gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
-            client = genai.Client(api_key=gemini_key)
-            
-            interaction = client.interactions.create(
-                model="gemini-3.5-flash",
-                input=stage_1_prompt
+            import cohere
+            cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
+            co = cohere.AsyncClientV2(api_key=cohere_key)
+            response = await co.chat(
+                model="command-a-plus-05-2026",
+                messages=[{"role": "user", "content": stage_1_prompt}]
             )
-            prompt = interaction.output_text.strip().replace('"', "'")
-        except Exception as gemini_err:
-            logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
-            try:
-                import cohere
-                cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
-                co = cohere.AsyncClientV2(api_key=cohere_key)
-                response = await co.chat(
-                    model="command-a-plus-05-2026",
-                    messages=[{"role": "user", "content": stage_1_prompt}]
-                )
-                prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
-                if not prompt:
-                    raise ValueError("Empty Cohere response")
-            except Exception as cohere_err:
-                print(f"[IMAGE GEN FALLBACK FAIL] Both Gemini and Cohere failed: {cohere_err}. Using default prompt.")
-                prompt = f"A high-quality, professional, cinematic illustration representing: {topic}"
-        print(f"Generated prompt: {prompt}")
+            prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
+            if not prompt:
+                raise ValueError("Empty Cohere response")
+        except Exception as cohere_err:
+            print(f"[IMAGE GEN FALLBACK FAIL] Both Gemini and Cohere failed: {cohere_err}. Using default prompt.")
+            prompt = f"A high-quality, professional, cinematic illustration representing: {topic}"
+    print(f"Generated prompt: {prompt}")
 
-        headers = {"Authorization": f"Bearer {hf_api_key}"}
-        hf_payload = {"inputs": prompt}
-        MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
-        hf_url = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
+    headers = {"Authorization": f"Bearer {hf_api_key}"}
+    hf_payload = {"inputs": prompt}
+    MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+    hf_url = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
 
-        print(f"Attempting to reach: {hf_url}")
+    print(f"Attempting to reach: {hf_url}")
 
-        # Async httpx client to prevent blocking the main event loop
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(hf_url, json=hf_payload, headers=headers)
-        
-        print("Status:", resp.status_code)
-        print("Body:", resp.text[:500])
-        
-        if resp.status_code == 503:
-            raise HTTPException(
-                status_code=503,
-                detail="Hugging Face model is loading. Please try again in a few seconds."
-            )
-        
-        if resp.status_code != 200:
-            error_detail = resp.text
-            try:
-                error_detail = resp.json().get("error", resp.text)
-            except:
-                pass
-            raise HTTPException(
-                status_code=resp.status_code,
-                detail=f"Hugging Face API error: {error_detail}"
-            )
-        
-        import base64
-        encoded_img = base64.b64encode(resp.content).decode("utf-8")
-        image_url = f"data:image/jpeg;base64,{encoded_img}"
+    # Async httpx client to prevent blocking the main event loop
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(hf_url, json=hf_payload, headers=headers)
+    
+    print("Status:", resp.status_code)
+    print("Body:", resp.text[:500])
+    
+    if resp.status_code == 503:
+        raise HTTPException(
+            status_code=503,
+            detail="Hugging Face model is loading. Please try again in a few seconds."
+        )
+    
+    if resp.status_code != 200:
+        error_detail = resp.text
+        try:
+            error_detail = resp.json().get("error", resp.text)
+        except:
+            pass
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Hugging Face API error: {error_detail}"
+        )
+    
+    import base64
+    encoded_img = base64.b64encode(resp.content).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded_img}"
+
+
+async def generate_image_endpoint(
+    payload: ImageGenerateRequest,
+    request: Request
+):
+    """Generate a premium metaphorical illustration for a given topic using Hugging Face Stable Diffusion XL."""
+    try:
+        topic = payload.topic or "technology branding"
+        draft_text = payload.draft_text or ""
+        image_url = await generate_metaphorical_image_helper(topic, draft_text)
         return {"image_url": image_url}
             
     except HTTPException as he:
-        print("IMAGE GEN ERROR TRACEBACK:", str(he.detail))
         raise he
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        print("IMAGE GEN ERROR TRACEBACK:", str(e))
-        print(tb)
         raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
 
 @router.post("", response_model=DraftResponse)
