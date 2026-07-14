@@ -21,59 +21,72 @@ class LinkedInClient:
 
     async def check_and_refresh_token(self, db: AsyncSession, account: LinkedInAccount) -> str:
         """Evaluate token expiry and refresh via OAuth2 if required. Returns decrypted access token."""
-        now = datetime.now(timezone.utc)
-        # Ensure expires_at is timezone-aware for safe comparison (handling naive datetime from SQLite)
-        expires_at = account.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        try:
+            now = datetime.now(timezone.utc)
+            # Ensure expires_at is timezone-aware for safe comparison (handling naive datetime from SQLite)
+            expires_at = account.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-        # Refresh if expired or expiring in less than 48 hours
-        if expires_at <= now + timedelta(hours=48):
-            logger.info(f"LinkedIn access token for account {account.id} is near expiration (within 48 hours). Refreshing...")
-            
-            # Retrieve encrypted refresh token
-            decrypted_refresh = decrypt_token(account.refresh_token)
-            if not decrypted_refresh:
-                raise ValueError("Cannot refresh access token: Refresh token is missing or empty.")
+            # Refresh if expired or expiring in less than 48 hours
+            if expires_at <= now + timedelta(hours=48):
+                logger.info(f"LinkedIn access token for account {account.id} is near expiration (within 48 hours). Refreshing...")
                 
-            refresh_data = {
-                "grant_type": "refresh_token",
-                "refresh_token": decrypted_refresh,
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-            }
-            
-            url = f"{self.oauth_url}/oauth/v2/accessToken"
-            
-            # Direct post to exchange refresh token
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(url, data=refresh_data)
+                # Retrieve encrypted refresh token
+                decrypted_refresh = decrypt_token(account.refresh_token)
+                if not decrypted_refresh:
+                    raise ValueError("Cannot refresh access token: Refresh token is missing or empty.")
+                    
+                refresh_data = {
+                    "grant_type": "refresh_token",
+                    "refresh_token": decrypted_refresh,
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                }
                 
-                # Graceful mock response handling during local testing if credentials are mock values
-                if resp.status_code != 200 and (self.client_id == "mock_client_id" or "mock" in decrypted_refresh):
-                    logger.warning("Mock credentials found. Simulating successful token refresh.")
-                    new_access = "mock_refreshed_access_token"
-                    new_refresh = "mock_refreshed_refresh_token"
-                    expires_in = 3600
-                    refresh_expires_in = 86400
-                else:
-                    resp.raise_for_status()
-                    payload = resp.json()
-                    new_access = payload.get("access_token")
-                    new_refresh = payload.get("refresh_token") or decrypted_refresh
-                    expires_in = int(payload.get("expires_in", 3600))
-                    refresh_expires_in = int(payload.get("refresh_token_expires_in", 86400))
-            
-            # Save updated values to database
-            account.access_token = encrypt_token(new_access)
-            account.refresh_token = encrypt_token(new_refresh)
-            account.expires_at = now + timedelta(seconds=expires_in)
-            account.refresh_expires_at = now + timedelta(seconds=refresh_expires_in)
-            
-            await db.commit()
-            return new_access
-            
-        return decrypt_token(account.access_token)
+                url = f"{self.oauth_url}/oauth/v2/accessToken"
+                
+                # Direct post to exchange refresh token
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(url, data=refresh_data)
+                    
+                    # Graceful mock response handling during local testing if credentials are mock values
+                    if resp.status_code != 200 and (self.client_id == "mock_client_id" or "mock" in decrypted_refresh):
+                        logger.warning("Mock credentials found. Simulating successful token refresh.")
+                        new_access = "mock_refreshed_access_token"
+                        new_refresh = "mock_refreshed_refresh_token"
+                        expires_in = 3600
+                        refresh_expires_in = 86400
+                    else:
+                        resp.raise_for_status()
+                        payload = resp.json()
+                        new_access = payload.get("access_token")
+                        new_refresh = payload.get("refresh_token") or decrypted_refresh
+                        expires_in = int(payload.get("expires_in", 3600))
+                        refresh_expires_in = int(payload.get("refresh_token_expires_in", 86400))
+                
+                # Save updated values to database
+                account.access_token = encrypt_token(new_access)
+                account.refresh_token = encrypt_token(new_refresh)
+                account.expires_at = now + timedelta(seconds=expires_in)
+                account.refresh_expires_at = now + timedelta(seconds=refresh_expires_in)
+                
+                await db.commit()
+                return new_access
+                
+            return decrypt_token(account.access_token)
+        except Exception as e:
+            from cryptography.fernet import InvalidToken
+            if isinstance(e, InvalidToken) or e.__class__.__name__ == "InvalidToken":
+                logger.warning("Corrupted LinkedIn token detected and wiped from the database.")
+                await db.delete(account)
+                await db.commit()
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=401,
+                    detail="LinkedIn session expired or corrupted. Please re-link your account."
+                )
+            raise e
 
     async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str) -> str:
         """Publish commentary content to LinkedIn's modern /v2/posts endpoint.

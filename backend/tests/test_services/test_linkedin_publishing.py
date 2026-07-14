@@ -250,3 +250,32 @@ async def test_orchestrator_linkedin_pre_flight_length_validation_failure(db_ses
     db_draft = res.scalars().first()
     assert db_draft is not None
     assert db_draft.status == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_check_and_refresh_token_corrupted_wipes_db(db_session: AsyncSession):
+    # Seed a token that is encrypted with a different key
+    from cryptography.fernet import Fernet
+    different_key = Fernet.generate_key()
+    corrupted_payload = Fernet(different_key).encrypt(b"some_access_token").decode()
+
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        access_token=corrupted_payload,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=5)
+    )
+    db_session.add(account)
+    await db_session.commit()
+
+    from fastapi import HTTPException
+    client = LinkedInClient()
+    with pytest.raises(HTTPException) as exc_info:
+        await client.check_and_refresh_token(db_session, account)
+
+    assert exc_info.value.status_code == 401
+    assert "expired or corrupted" in exc_info.value.detail
+
+    # Verify account was deleted from database
+    res = await db_session.execute(select(LinkedInAccount).where(LinkedInAccount.id == account.id))
+    db_account = res.scalars().first()
+    assert db_account is None
