@@ -88,19 +88,73 @@ class LinkedInClient:
                 )
             raise e
 
-    async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str) -> str:
+    async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None) -> str:
         """Publish commentary content to LinkedIn's modern /v2/posts endpoint.
         
         Args:
             db: AsyncSession database handle.
             account: The LinkedInAccount record to publish with.
             text: Post body content text.
+            image_url: Optional base64 or URL of the image to attach.
             
         Returns:
             The created post URN string.
         """
         access_token = await self.check_and_refresh_token(db, account)
         
+        asset_urn = None
+        if image_url:
+            try:
+                logger.info("Registering image asset with LinkedIn...")
+                register_url = f"{self.api_url}/v2/assets?action=registerUpload"
+                register_headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0"
+                }
+                register_payload = {
+                    "registerUploadRequest": {
+                        "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                        "owner": account.linkedin_person_urn,
+                        "serviceRelationships": [
+                            {
+                                "relationshipType": "OWNER",
+                                "identifier": "urn:li:userGeneratedContent"
+                            }
+                        ],
+                        "supportedUploadMechanism": ["SYNCHRONOUS_UPLOAD"]
+                    }
+                }
+                async with httpx.AsyncClient() as client:
+                    reg_resp = await client.post(register_url, json=register_payload, headers=register_headers)
+                    reg_resp.raise_for_status()
+                    reg_data = reg_resp.json()
+                    
+                upload_mechanism = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]
+                upload_url = upload_mechanism["uploadUrl"]
+                asset_urn = reg_data["value"]["asset"]
+                logger.info(f"Registered asset URN: {asset_urn}. Uploading binary bytes...")
+                
+                # Decode Base64 data URI or raw base64 string
+                import base64
+                if "," in image_url:
+                    base64_data = image_url.split(",")[1]
+                else:
+                    base64_data = image_url
+                image_bytes = base64.b64decode(base64_data)
+                
+                # PUT raw binary bytes to upload URL
+                put_headers = {
+                    "Content-Type": "application/octet-stream"
+                }
+                async with httpx.AsyncClient() as client:
+                    put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+                    put_resp.raise_for_status()
+                logger.info("Successfully uploaded image bytes to LinkedIn.")
+            except Exception as upload_err:
+                logger.error(f"Failed to upload image to LinkedIn, posting text-only fallback: {upload_err}")
+                asset_urn = None
+
         url = f"{self.api_url}/v2/posts"
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -119,6 +173,13 @@ class LinkedInClient:
             "lifecycleState": "PUBLISHED"
         }
         
+        if asset_urn:
+            payload["content"] = {
+                "media": {
+                    "id": asset_urn
+                }
+            }
+            
         logger.info(f"Dispatched LinkedIn post request for URN: {account.linkedin_person_urn}")
         
         async with httpx.AsyncClient() as client:

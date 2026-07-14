@@ -59,8 +59,9 @@ class PublishingOrchestrator:
         try:
             account = await self._get_default_linkedin_account(db)
             
+            image_url = (draft.llm_metadata or {}).get("image_url")
             # Dispatch to LinkedIn Post API
-            post_urn = await self.linkedin_client.publish_post(db, account, post_text)
+            post_urn = await self.linkedin_client.publish_post(db, account, post_text, image_url=image_url)
             
             # Mark status as PUBLISHED and log resulting share URN
             draft.status = "PUBLISHED"
