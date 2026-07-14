@@ -110,7 +110,7 @@ STRICT RECIPE:
 
         headers = {"Authorization": f"Bearer {hf_api_key}"}
         hf_payload = {"inputs": prompt}
-        MODEL_ID = "black-forest-labs/FLUX.1-schnell"
+        MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
         hf_url = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
 
         print(f"Attempting to reach: {hf_url}")
