@@ -115,8 +115,9 @@ STRICT RECIPE:
 
         print(f"Attempting to reach: {hf_url}")
 
-        # Synchronous requests call to avoid macOS async DNS bug
-        resp = requests.post(hf_url, json=hf_payload, headers=headers, timeout=30.0)
+        # Async httpx client to prevent blocking the main event loop
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(hf_url, json=hf_payload, headers=headers)
         
         print("Status:", resp.status_code)
         print("Body:", resp.text[:500])
