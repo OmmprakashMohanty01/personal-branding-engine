@@ -51,9 +51,22 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+  const showToast = (message: any, type: "success" | "error" | "info" = "info") => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast({ message, type });
+    
+    let displayMessage = "An error occurred.";
+    if (typeof message === "string") {
+      displayMessage = message;
+    } else if (Array.isArray(message)) {
+      displayMessage = message.map((item: any) => {
+        if (typeof item === "string") return item;
+        return item?.msg || JSON.stringify(item);
+      }).join(", ");
+    } else if (message && typeof message === "object") {
+      displayMessage = message.message || message.detail || JSON.stringify(message);
+    }
+    
+    setToast({ message: displayMessage, type });
     toastTimeoutRef.current = setTimeout(() => {
       setToast(null);
     }, 4000);
@@ -321,7 +334,17 @@ export default function DashboardPage() {
         showToast("AI image generated successfully! Remember to Save Changes.", "success");
       } else {
         const errorData = await res.json().catch(() => ({}));
-        showToast(errorData.detail || "Failed to generate image.", "error");
+        let errMsg = "Failed to generate image.";
+        if (errorData.detail) {
+          if (Array.isArray(errorData.detail)) {
+            errMsg = errorData.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+          } else if (typeof errorData.detail === "string") {
+            errMsg = errorData.detail;
+          } else {
+            errMsg = JSON.stringify(errorData.detail);
+          }
+        }
+        showToast(errMsg, "error");
       }
     } catch (err) {
       console.error("Image generation error:", err);
