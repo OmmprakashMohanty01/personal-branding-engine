@@ -401,26 +401,31 @@ export default function DashboardPage() {
 
         {/* LinkedIn Connection Widget */}
         <div className="flex items-center gap-4">
-          {linkedinConnected ? (
-            <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <div className="text-left">
-                <span className="text-xs block text-gray-400 uppercase tracking-wider font-bold">LinkedIn Linked</span>
-                <span className="text-[11px] font-mono text-emerald-300 truncate max-w-[160px] block">
-                  {linkedinUrn.replace("urn:li:person:", "")}
-                </span>
+          {(() => {
+            if (linkedinConnected === false) {
+              const redirectParam = typeof window !== "undefined" ? `?redirect_uri=${encodeURIComponent(window.location.origin)}` : "";
+              return (
+                <a
+                  id="linkedin-connect-button"
+                  href={`${API_BASE}/publishing/linkedin/login${redirectParam}`}
+                  className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold tracking-wide shadow-md active:scale-95 transition-all duration-200"
+                >
+                  Link LinkedIn Account
+                </a>
+              );
+            }
+            return (
+              <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <div className="text-left">
+                  <span className="text-xs block text-gray-400 uppercase tracking-wider font-bold">LinkedIn Linked</span>
+                  <span className="text-[11px] font-mono text-emerald-300 truncate max-w-[160px] block">
+                    {linkedinUrn.replace("urn:li:person:", "")}
+                  </span>
+                </div>
               </div>
-            </div>
-          ) : (
-            <button
-              id="linkedin-connect-button"
-              onClick={connectLinkedIn}
-              disabled={isConnecting}
-              className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-xl text-xs font-semibold tracking-wide shadow-md active:scale-95 transition-all duration-200"
-            >
-              {isConnecting ? "Connecting..." : "Link LinkedIn Account"}
-            </button>
-          )}
+            );
+          })()}
         </div>
       </div>
 

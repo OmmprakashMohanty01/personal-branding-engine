@@ -126,3 +126,27 @@ async def connect_linkedin(
         )
 
 
+@router.get("/linkedin/login")
+async def linkedin_login(redirect_uri: str | None = Query(None)):
+    """Redirect user to LinkedIn's OAuth consent screen."""
+    import os
+    from fastapi.responses import RedirectResponse
+    
+    client_id = os.getenv("LINKEDIN_CLIENT_ID") or "mock_client_id"
+    env_redirect = os.getenv("REDIRECT_URI")
+    final_redirect = env_redirect or redirect_uri or "http://localhost:3000"
+    
+    scope = "openid profile email w_member_social"
+    state = "linkedin_login_state_123"
+    
+    auth_url = (
+        f"https://www.linkedin.com/oauth/v2/authorization"
+        f"?response_type=code"
+        f"&client_id={client_id}"
+        f"&redirect_uri={final_redirect}"
+        f"&scope={scope}"
+        f"&state={state}"
+    )
+    return RedirectResponse(auth_url)
+
+
