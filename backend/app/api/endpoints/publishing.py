@@ -20,10 +20,12 @@ async def check_linkedin_status(db: AsyncSession = Depends(get_db)):
     if account:
         return {
             "connected": True,
+            "is_linked": True,
             "linkedin_person_urn": account.linkedin_person_urn
         }
     return {
-        "connected": False
+        "connected": False,
+        "is_linked": False
     }
 
 @router.post("/linkedin/connect")
