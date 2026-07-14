@@ -138,15 +138,9 @@ STRICT RECIPE:
                 detail=f"Hugging Face API error: {error_detail}"
             )
         
-        os.makedirs("static/images", exist_ok=True)
-        
-        filename = f"generated_{uuid.uuid4().hex}.jpg"
-        filepath = os.path.join("static/images", filename)
-        with open(filepath, "wb") as f:
-            f.write(resp.content)
-        
-        base_url = str(request.base_url).rstrip("/")
-        image_url = f"{base_url}/static/images/{filename}"
+        import base64
+        encoded_img = base64.b64encode(resp.content).decode("utf-8")
+        image_url = f"data:image/jpeg;base64,{encoded_img}"
         return {"image_url": image_url}
             
     except HTTPException as he:
