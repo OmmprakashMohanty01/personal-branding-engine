@@ -2,6 +2,7 @@ import httpx
 import requests
 import uuid
 import os
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.services.generation.orchestrator import GenerationOrchestrator
 from app.services.publishing.orchestrator import PublishingOrchestrator
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
+logger = logging.getLogger("branding_engine.api.generation")
 gen_orchestrator = GenerationOrchestrator()
 pub_orchestrator = PublishingOrchestrator()
 
@@ -75,18 +77,35 @@ STRICT RECIPE:
 5. DO NOT use generic floating glowing dots or plain data streams. Make it specific to the text.
 """
         user_prompt = f"Topic: {topic}\n\nDraft Text: {draft_text}"
-        
-        from google import genai
-        gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
-        client = genai.Client(api_key=gemini_key)
+        stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
         
         print(f"Generating dynamic image prompt via LLM for topic: {topic}")
-        stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
-        interaction = client.interactions.create(
-            model="gemini-3.5-flash",
-            input=stage_1_prompt
-        )
-        prompt = interaction.output_text.strip().replace('"', "'")
+        try:
+            from google import genai
+            gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
+            client = genai.Client(api_key=gemini_key)
+            
+            interaction = client.interactions.create(
+                model="gemini-3.5-flash",
+                input=stage_1_prompt
+            )
+            prompt = interaction.output_text.strip().replace('"', "'")
+        except Exception as gemini_err:
+            logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
+            try:
+                import cohere
+                cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
+                co = cohere.AsyncClientV2(api_key=cohere_key)
+                response = await co.chat(
+                    model="command-a-plus-05-2026",
+                    messages=[{"role": "user", "content": stage_1_prompt}]
+                )
+                prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
+                if not prompt:
+                    raise ValueError("Empty Cohere response")
+            except Exception as cohere_err:
+                print(f"[IMAGE GEN FALLBACK FAIL] Both Gemini and Cohere failed: {cohere_err}. Using default prompt.")
+                prompt = f"A high-quality, professional, cinematic illustration representing: {topic}"
         print(f"Generated prompt: {prompt}")
 
         headers = {"Authorization": f"Bearer {hf_api_key}"}
