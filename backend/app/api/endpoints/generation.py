@@ -104,34 +104,29 @@ STRICT RECIPE:
 
     headers = {"Authorization": f"Bearer {hf_api_key}"}
     hf_payload = {"inputs": prompt}
-    MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+    MODEL_ID = "black-forest-labs/FLUX.1-schnell"
     hf_url = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
 
     print(f"Attempting to reach: {hf_url}")
 
-    # Async httpx client to prevent blocking the main event loop
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(hf_url, json=hf_payload, headers=headers)
-    
-    print("Status:", resp.status_code)
-    print("Body:", resp.text[:500])
-    
-    if resp.status_code == 503:
-        raise HTTPException(
-            status_code=503,
-            detail="Hugging Face model is loading. Please try again in a few seconds."
-        )
-    
-    if resp.status_code != 200:
-        error_detail = resp.text
-        try:
-            error_detail = resp.json().get("error", resp.text)
-        except:
-            pass
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Hugging Face API error: {error_detail}"
-        )
+    try:
+        # Async httpx client to prevent blocking the main event loop
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(hf_url, json=hf_payload, headers=headers)
+        
+        print("Status:", resp.status_code)
+        print("Body:", resp.text[:500])
+        
+        if resp.status_code != 200:
+            error_detail = resp.text
+            try:
+                error_detail = resp.json().get("error", resp.text)
+            except:
+                pass
+            raise ValueError(f"Hugging Face API returned status {resp.status_code}: {error_detail}")
+    except Exception as hf_err:
+        logger.error(f"Hugging Face API call failed: {hf_err}")
+        raise ValueError(f"Hugging Face network error: {str(hf_err)}")
     
     import base64
     encoded_img = base64.b64encode(resp.content).decode("utf-8")
@@ -142,17 +137,20 @@ async def generate_image_endpoint(
     payload: ImageGenerateRequest,
     request: Request
 ):
-    """Generate a premium metaphorical illustration for a given topic using Hugging Face Stable Diffusion XL."""
+    """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
     try:
         topic = payload.topic or "technology branding"
         draft_text = payload.draft_text or ""
         image_url = await generate_metaphorical_image_helper(topic, draft_text)
-        return {"image_url": image_url}
+        return {"image_url": image_url, "success": True}
             
-    except HTTPException as he:
-        raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+        logger.error(f"Image generation failed: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"image_url": None, "success": False, "error": "Image generation currently unavailable."}
+        )
 
 @router.post("", response_model=DraftResponse)
 async def generate_content(
