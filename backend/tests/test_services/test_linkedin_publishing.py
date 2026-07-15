@@ -361,26 +361,27 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             }
         )
         
-        # Assert posts POST was called with content media URN and shareMediaCategory
+        # Assert UGC POST was called with correctly nested shareMediaCategory
         mock_post.assert_any_call(
-            "https://api.linkedin.com/v2/posts",
+            "https://api.linkedin.com/v2/ugcPosts",
             json={
                 "author": "urn:li:person:abc",
-                "commentary": "Test commentary",
-                "visibility": "PUBLIC",
-                "distribution": {
-                    "feedDistribution": "MAIN_FEED",
-                    "targetEntities": [],
-                    "thirdPartyDistributionChannels": []
-                },
                 "lifecycleState": "PUBLISHED",
-                "isReshareDisabledByAuthor": False,
-                "content": {
-                    "media": {
-                        "id": "urn:li:digitalmediaAsset:C123XYZ"
+                "specificContent": {
+                    "com.linkedin.ugc.ShareContent": {
+                        "shareCommentary": {"text": "Test commentary"},
+                        "shareMediaCategory": "IMAGE",
+                        "media": [
+                            {
+                                "status": "READY",
+                                "media": "urn:li:digitalmediaAsset:C123XYZ"
+                            }
+                        ]
                     }
                 },
-                "shareMediaCategory": "IMAGE"
+                "visibility": {
+                    "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+                }
             },
             headers={
                 "Authorization": "Bearer some_token",

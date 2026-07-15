@@ -175,7 +175,7 @@ class LinkedInClient:
                 logger.error(f"Failed to upload image to LinkedIn, posting text-only fallback: {upload_err}")
                 asset_urn = None
 
-        url = f"{self.api_url}/v2/posts"
+        url = f"{self.api_url}/v2/ugcPosts"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
@@ -183,31 +183,32 @@ class LinkedInClient:
             "LinkedIn-Version": "202401"
         }
         
-        share_media_category = "IMAGE" if asset_urn else "NONE"
-        payload = {
-            "author": account.linkedin_person_urn,
-            "commentary": text,
-            "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": []
-            },
-            "lifecycleState": "PUBLISHED",
-            "isReshareDisabledByAuthor": False
+        # Build UGC ShareContent with shareMediaCategory nested correctly
+        share_content = {
+            "shareCommentary": {"text": text},
+            "shareMediaCategory": "IMAGE" if asset_urn else "NONE"
         }
         
         if asset_urn:
-            payload["content"] = {
-                "media": {
-                    "id": asset_urn
+            share_content["media"] = [
+                {
+                    "status": "READY",
+                    "media": asset_urn
                 }
+            ]
+        
+        payload = {
+            "author": account.linkedin_person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": share_content
+            },
+            "visibility": {
+                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
             }
-            payload["shareMediaCategory"] = "IMAGE"
-        else:
-            payload["shareMediaCategory"] = "NONE"
+        }
             
-        logger.info(f"Dispatched LinkedIn post request for URN: {account.linkedin_person_urn}")
+        logger.info(f"Dispatched LinkedIn UGC post request for URN: {account.linkedin_person_urn}")
         
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload, headers=headers)
