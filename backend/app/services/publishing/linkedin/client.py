@@ -89,20 +89,37 @@ class LinkedInClient:
             raise e
 
     async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None) -> str:
-        """Publish commentary content to LinkedIn's modern /v2/posts endpoint.
+        """Publish content to LinkedIn using the modern /rest/posts endpoint.
+        
+        Image upload uses /rest/images?action=initializeUpload (NOT legacy /v2/assets).
+        Publishing uses /rest/posts (NOT legacy /v2/ugcPosts).
         
         Args:
             db: AsyncSession database handle.
             account: The LinkedInAccount record to publish with.
             text: Post body content text.
-            image_url: Optional base64 or URL of the image to attach.
+            image_url: Optional base64 data URI or raw base64 string of the image to attach.
             
         Returns:
             The created post URN string.
+            
+        Raises:
+            ValueError: If image_url is provided but upload fails at any step.
         """
+        import base64
+        import json as json_lib
+        
         access_token = await self.check_and_refresh_token(db, account)
         
-        asset_urn = None
+        # Standard headers for all /rest/ API calls
+        rest_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202401"
+        }
+        
+        image_urn = None
         if image_url:
             # Guard: refuse image upload with mock/sandbox credentials
             if "mock" in (account.linkedin_person_urn or ""):
@@ -110,121 +127,115 @@ class LinkedInClient:
                     "Cannot upload images using mock sandbox credentials. "
                     "Please connect a real LinkedIn account before publishing with images."
                 )
-            try:
-                logger.info("Registering image asset with LinkedIn...")
-                register_url = f"{self.api_url}/v2/assets?action=registerUpload"
-                register_headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json",
-                    "X-Restli-Protocol-Version": "2.0.0",
-                    "LinkedIn-Version": "202401"
+            
+            # ── STEP 1-2: Decode JPEG bytes from base64 ──
+            if "," in image_url:
+                base64_data = image_url.split(",")[1]
+            else:
+                base64_data = image_url
+            image_bytes = base64.b64decode(base64_data)
+            logger.info(f"[STEP 1-2] Decoded image bytes. Length: {len(image_bytes)} bytes")
+            
+            # ── STEP 3: Initialize upload via modern /rest/images endpoint ──
+            init_url = f"{self.api_url}/rest/images?action=initializeUpload"
+            init_payload = {
+                "initializeUploadRequest": {
+                    "owner": account.linkedin_person_urn
                 }
-                register_payload = {
-                    "registerUploadRequest": {
-                        "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                        "owner": account.linkedin_person_urn,
-                        "serviceRelationships": [
-                            {
-                                "relationshipType": "OWNER",
-                                "identifier": "urn:li:userGeneratedContent"
-                            }
-                        ],
-                        "supportedUploadMechanism": ["SYNCHRONOUS_UPLOAD"]
-                    }
-                }
-                async with httpx.AsyncClient() as client:
-                    reg_resp = await client.post(register_url, json=register_payload, headers=register_headers)
-                    if reg_resp.status_code not in (200, 201):
-                        logger.error(f"[LINKEDIN IMAGE] registerUpload failed ({reg_resp.status_code}): {reg_resp.text}")
-                        print(f"[LINKEDIN IMAGE] registerUpload response body: {reg_resp.text}")
-                    reg_resp.raise_for_status()
-                    reg_data = reg_resp.json()
-                    
-                upload_mechanism = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]
-                upload_url = upload_mechanism["uploadUrl"]
-                asset_urn = reg_data["value"]["asset"]
-                logger.info(f"Registered asset URN: {asset_urn}. Uploading binary bytes...")
-                
-                # Decode Base64 data URI or raw base64 string
-                import base64
-                if "," in image_url:
-                    base64_data = image_url.split(",")[1]
-                else:
-                    base64_data = image_url
-                image_bytes = base64.b64decode(base64_data)
-                
-                # PUT raw binary bytes to upload URL
-                put_headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/octet-stream",
-                    "X-Restli-Protocol-Version": "2.0.0",
-                    "LinkedIn-Version": "202401"
-                }
-                async with httpx.AsyncClient() as client:
-                    put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
-                    if put_resp.status_code not in (200, 201):
-                        logger.error(f"[LINKEDIN IMAGE] PUT upload failed ({put_resp.status_code}): {put_resp.text}")
-                        print(f"[LINKEDIN IMAGE] PUT upload response body: {put_resp.text}")
-                    put_resp.raise_for_status()
-                logger.info("Successfully uploaded image bytes to LinkedIn.")
-            except httpx.HTTPStatusError as upload_err:
-                logger.error(f"[LINKEDIN IMAGE] HTTP error during image upload: {upload_err}")
-                print(f"[LINKEDIN IMAGE] Full error response: {upload_err.response.text}")
-                asset_urn = None
-            except Exception as upload_err:
-                logger.error(f"Failed to upload image to LinkedIn, posting text-only fallback: {upload_err}")
-                asset_urn = None
-
-        url = f"{self.api_url}/v2/ugcPosts"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401"
-        }
+            }
+            logger.info(f"[STEP 3] Calling POST {init_url} with owner={account.linkedin_person_urn}")
+            
+            async with httpx.AsyncClient() as client:
+                init_resp = await client.post(init_url, json=init_payload, headers=rest_headers)
+                if init_resp.status_code not in (200, 201):
+                    logger.error(f"[STEP 3] initializeUpload FAILED ({init_resp.status_code}): {init_resp.text}")
+                    print(f"[STEP 3] initializeUpload response body: {init_resp.text}")
+                    raise ValueError(
+                        f"LinkedIn initializeUpload failed with status {init_resp.status_code}: {init_resp.text}"
+                    )
+                init_data = init_resp.json()
+            
+            # ── STEP 4: Extract uploadUrl and modern image URN ──
+            upload_url = init_data["value"]["uploadUrl"]
+            image_urn = init_data["value"]["image"]
+            logger.info(f"[STEP 4] Received uploadUrl: {upload_url[:80]}...")
+            logger.info(f"[STEP 4] Received image URN: {image_urn}")
+            
+            if not image_urn or not image_urn.startswith("urn:li:image:"):
+                raise ValueError(
+                    f"LinkedIn returned an unexpected image URN format: {image_urn}. "
+                    "Expected urn:li:image:* from /rest/images endpoint."
+                )
+            
+            # ── STEP 5-6: PUT JPEG bytes to uploadUrl ──
+            put_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/octet-stream",
+            }
+            logger.info(f"[STEP 5] Uploading {len(image_bytes)} bytes to LinkedIn upload URL...")
+            
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+                if put_resp.status_code not in (200, 201):
+                    logger.error(f"[STEP 5-6] PUT upload FAILED ({put_resp.status_code}): {put_resp.text}")
+                    print(f"[STEP 5-6] PUT upload response body: {put_resp.text}")
+                    raise ValueError(
+                        f"LinkedIn image PUT upload failed with status {put_resp.status_code}: {put_resp.text}"
+                    )
+            
+            logger.info(f"[STEP 6] PUT upload succeeded with status {put_resp.status_code}")
+            
+            # ── STEP 7: Confirm image URN ──
+            logger.info(f"[STEP 7] Image URN confirmed: {image_urn}")
+            
+            if image_urn is None:
+                raise ValueError(
+                    "image_urn is None after upload sequence completed. "
+                    "Refusing to publish text-only post when an image was requested."
+                )
         
-        # Build UGC ShareContent with shareMediaCategory nested correctly
-        share_content = {
-            "shareCommentary": {"text": text},
-            "shareMediaCategory": "IMAGE" if asset_urn else "NONE"
-        }
-        
-        if asset_urn:
-            share_content["media"] = [
-                {
-                    "status": "READY",
-                    "media": asset_urn
-                }
-            ]
+        # ── STEP 8-9: Publish post via modern /rest/posts endpoint ──
+        publish_url = f"{self.api_url}/rest/posts"
         
         payload = {
             "author": account.linkedin_person_urn,
-            "lifecycleState": "PUBLISHED",
-            "specificContent": {
-                "com.linkedin.ugc.ShareContent": share_content
+            "commentary": text,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": []
             },
-            "visibility": {
-                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-            }
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False
         }
-            
-        logger.info(f"Dispatched LinkedIn UGC post request for URN: {account.linkedin_person_urn}")
+        
+        if image_urn:
+            payload["content"] = {
+                "media": {
+                    "id": image_urn
+                }
+            }
+            logger.info(f"[STEP 8] Attached image URN {image_urn} to post payload")
+        
+        logger.info(f"[STEP 9] Final LinkedIn payload: {json_lib.dumps(payload, indent=2)}")
+        logger.info(f"[STEP 9] POST {publish_url}")
         
         async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await client.post(publish_url, json=payload, headers=rest_headers)
 
             if resp.status_code not in (200, 201):
-                logger.error(f"[LINKEDIN PUBLISH] API returned {resp.status_code}: {resp.text}")
-                print(f"[LINKEDIN PUBLISH] Full error response body: {resp.text}")
+                logger.error(f"[STEP 9] LinkedIn /rest/posts returned {resp.status_code}: {resp.text}")
+                print(f"[STEP 9] Full error response body: {resp.text}")
                 raise httpx.HTTPStatusError(
-                    f"LinkedIn publishing API returned non-strict success status {resp.status_code}.",
+                    f"LinkedIn /rest/posts returned {resp.status_code}.",
                     request=resp.request,
                     response=resp
                 )
                 
             resp.raise_for_status()
-            # LinkedIn returns the post URN in the location or x-restli-id headers
             post_urn = resp.headers.get("x-restli-id") or resp.json().get("id") or "urn:li:share:unknown"
+            logger.info(f"[STEP 9] LinkedIn post published successfully. Post URN: {post_urn}")
             return post_urn
             
     async def exchange_code_for_tokens(self, code: str, redirect_uri: str) -> dict:

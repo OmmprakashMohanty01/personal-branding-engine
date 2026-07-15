@@ -295,27 +295,23 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
     client = LinkedInClient()
     
     with patch("httpx.AsyncClient.post") as mock_post, patch("httpx.AsyncClient.put") as mock_put:
-        # Mock registerUpload response
-        mock_register_resp = MagicMock(status_code=200)
-        mock_register_resp.json.return_value = {
+        # Mock /rest/images?action=initializeUpload response (modern API)
+        mock_init_resp = MagicMock(status_code=200)
+        mock_init_resp.json.return_value = {
             "value": {
-                "uploadMechanism": {
-                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest": {
-                        "uploadUrl": "https://api.linkedin.com/upload-target-123"
-                    }
-                },
-                "asset": "urn:li:digitalmediaAsset:C123XYZ"
+                "uploadUrl": "https://www.linkedin.com/dms-uploads/image-upload-target-123",
+                "image": "urn:li:image:C4E22AQH1234567890"
             }
         }
         
-        # Mock posts response
+        # Mock /rest/posts response
         mock_posts_resp = MagicMock(status_code=201)
         mock_posts_resp.headers = {"x-restli-id": "urn:li:share:post_123_abc"}
         
-        # Make post call return register response first, then posts response
-        mock_post.side_effect = [mock_register_resp, mock_posts_resp]
+        # initializeUpload POST first, then /rest/posts POST
+        mock_post.side_effect = [mock_init_resp, mock_posts_resp]
         
-        mock_put_resp = MagicMock(status_code=200)
+        mock_put_resp = MagicMock(status_code=201)
         mock_put.return_value = mock_put_resp
         
         image_base64 = "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
@@ -323,70 +319,55 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         
         assert post_urn == "urn:li:share:post_123_abc"
         
-        # Assert registerUpload POST was called
+        expected_rest_headers = {
+            "Authorization": "Bearer some_token",
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202401"
+        }
+        
+        # Assert /rest/images?action=initializeUpload POST was called
         mock_post.assert_any_call(
-            "https://api.linkedin.com/v2/assets?action=registerUpload",
+            "https://api.linkedin.com/rest/images?action=initializeUpload",
             json={
-                "registerUploadRequest": {
-                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                    "owner": "urn:li:person:abc",
-                    "serviceRelationships": [
-                        {
-                            "relationshipType": "OWNER",
-                            "identifier": "urn:li:userGeneratedContent"
-                        }
-                    ],
-                    "supportedUploadMechanism": ["SYNCHRONOUS_UPLOAD"]
+                "initializeUploadRequest": {
+                    "owner": "urn:li:person:abc"
                 }
             },
-            headers={
-                "Authorization": "Bearer some_token",
-                "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": "202401"
-            }
+            headers=expected_rest_headers
         )
         
-        # Assert PUT request was called with binary data
+        # Assert PUT request was called with binary data and correct headers
         import base64
         expected_bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
         mock_put.assert_called_once_with(
-            "https://api.linkedin.com/upload-target-123",
+            "https://www.linkedin.com/dms-uploads/image-upload-target-123",
             content=expected_bytes,
             headers={
                 "Authorization": "Bearer some_token",
                 "Content-Type": "application/octet-stream",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": "202401"
             }
         )
         
-        # Assert UGC POST was called with correctly nested shareMediaCategory
+        # Assert /rest/posts POST was called with modern payload schema
         mock_post.assert_any_call(
-            "https://api.linkedin.com/v2/ugcPosts",
+            "https://api.linkedin.com/rest/posts",
             json={
                 "author": "urn:li:person:abc",
-                "lifecycleState": "PUBLISHED",
-                "specificContent": {
-                    "com.linkedin.ugc.ShareContent": {
-                        "shareCommentary": {"text": "Test commentary"},
-                        "shareMediaCategory": "IMAGE",
-                        "media": [
-                            {
-                                "status": "READY",
-                                "media": "urn:li:digitalmediaAsset:C123XYZ"
-                            }
-                        ]
-                    }
+                "commentary": "Test commentary",
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": []
                 },
-                "visibility": {
-                    "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False,
+                "content": {
+                    "media": {
+                        "id": "urn:li:image:C4E22AQH1234567890"
+                    }
                 }
             },
-            headers={
-                "Authorization": "Bearer some_token",
-                "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": "202401"
-            }
+            headers=expected_rest_headers
         )
