@@ -355,7 +355,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             headers={"Content-Type": "application/octet-stream"}
         )
         
-        # Assert posts POST was called with content media URN
+        # Assert posts POST was called with content media URN and shareMediaCategory
         mock_post.assert_any_call(
             "https://api.linkedin.com/v2/posts",
             json={
@@ -364,14 +364,17 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
                 "visibility": "PUBLIC",
                 "distribution": {
                     "feedDistribution": "MAIN_FEED",
-                    "targetEntities": []
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": []
                 },
                 "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False,
                 "content": {
                     "media": {
                         "id": "urn:li:digitalmediaAsset:C123XYZ"
                     }
-                }
+                },
+                "shareMediaCategory": "IMAGE"
             },
             headers={
                 "Authorization": "Bearer some_token",

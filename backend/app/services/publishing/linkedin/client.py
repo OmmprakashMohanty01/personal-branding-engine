@@ -104,6 +104,12 @@ class LinkedInClient:
         
         asset_urn = None
         if image_url:
+            # Guard: refuse image upload with mock/sandbox credentials
+            if "mock" in (account.linkedin_person_urn or ""):
+                raise ValueError(
+                    "Cannot upload images using mock sandbox credentials. "
+                    "Please connect a real LinkedIn account before publishing with images."
+                )
             try:
                 logger.info("Registering image asset with LinkedIn...")
                 register_url = f"{self.api_url}/v2/assets?action=registerUpload"
@@ -162,15 +168,18 @@ class LinkedInClient:
             "X-Restli-Protocol-Version": "2.0.0"
         }
         
+        share_media_category = "IMAGE" if asset_urn else "NONE"
         payload = {
             "author": account.linkedin_person_urn,
             "commentary": text,
             "visibility": "PUBLIC",
             "distribution": {
                 "feedDistribution": "MAIN_FEED",
-                "targetEntities": []
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": []
             },
-            "lifecycleState": "PUBLISHED"
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False
         }
         
         if asset_urn:
@@ -179,6 +188,9 @@ class LinkedInClient:
                     "id": asset_urn
                 }
             }
+            payload["shareMediaCategory"] = "IMAGE"
+        else:
+            payload["shareMediaCategory"] = "NONE"
             
         logger.info(f"Dispatched LinkedIn post request for URN: {account.linkedin_person_urn}")
         
