@@ -27,12 +27,12 @@ async def generate_daily_draft(
     db: AsyncSession = Depends(get_db)
 ):
     """Secured endpoint to generate a daily draft based on the content strategy schedule."""
-    # Verify CRON_SECRET_KEY
-    expected_secret = os.getenv("CRON_SECRET_KEY")
+    # Verify API_CRON_SECRET
+    expected_secret = os.getenv("API_CRON_SECRET")
     if not expected_secret:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="CRON_SECRET_KEY is not configured on the server."
+            detail="API_CRON_SECRET is not configured on the server."
         )
     if x_cron_secret != expected_secret:
         raise HTTPException(

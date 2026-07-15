@@ -279,3 +279,103 @@ async def test_check_and_refresh_token_corrupted_wipes_db(db_session: AsyncSessi
     res = await db_session.execute(select(LinkedInAccount).where(LinkedInAccount.id == account.id))
     db_account = res.scalars().first()
     assert db_account is None
+
+
+@pytest.mark.asyncio
+async def test_publish_post_with_image_upload(db_session: AsyncSession):
+    # Mock account
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        access_token=encrypt_token("some_token"),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=5)
+    )
+    db_session.add(account)
+    await db_session.commit()
+
+    client = LinkedInClient()
+    
+    with patch("httpx.AsyncClient.post") as mock_post, patch("httpx.AsyncClient.put") as mock_put:
+        # Mock registerUpload response
+        mock_register_resp = MagicMock(status_code=200)
+        mock_register_resp.json.return_value = {
+            "value": {
+                "uploadMechanism": {
+                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest": {
+                        "uploadUrl": "https://api.linkedin.com/upload-target-123"
+                    }
+                },
+                "asset": "urn:li:digitalmediaAsset:C123XYZ"
+            }
+        }
+        
+        # Mock posts response
+        mock_posts_resp = MagicMock(status_code=201)
+        mock_posts_resp.headers = {"x-restli-id": "urn:li:share:post_123_abc"}
+        
+        # Make post call return register response first, then posts response
+        mock_post.side_effect = [mock_register_resp, mock_posts_resp]
+        
+        mock_put_resp = MagicMock(status_code=200)
+        mock_put.return_value = mock_put_resp
+        
+        image_base64 = "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        post_urn = await client.publish_post(db_session, account, "Test commentary", image_url=image_base64)
+        
+        assert post_urn == "urn:li:share:post_123_abc"
+        
+        # Assert registerUpload POST was called
+        mock_post.assert_any_call(
+            "https://api.linkedin.com/v2/assets?action=registerUpload",
+            json={
+                "registerUploadRequest": {
+                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                    "owner": "urn:li:person:abc",
+                    "serviceRelationships": [
+                        {
+                            "relationshipType": "OWNER",
+                            "identifier": "urn:li:userGeneratedContent"
+                        }
+                    ],
+                    "supportedUploadMechanism": ["SYNCHRONOUS_UPLOAD"]
+                }
+            },
+            headers={
+                "Authorization": "Bearer some_token",
+                "Content-Type": "application/json",
+                "X-Restli-Protocol-Version": "2.0.0"
+            }
+        )
+        
+        # Assert PUT request was called with binary data
+        import base64
+        expected_bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+        mock_put.assert_called_once_with(
+            "https://api.linkedin.com/upload-target-123",
+            content=expected_bytes,
+            headers={"Content-Type": "application/octet-stream"}
+        )
+        
+        # Assert posts POST was called with content media URN
+        mock_post.assert_any_call(
+            "https://api.linkedin.com/v2/posts",
+            json={
+                "author": "urn:li:person:abc",
+                "commentary": "Test commentary",
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": []
+                },
+                "lifecycleState": "PUBLISHED",
+                "content": {
+                    "media": {
+                        "id": "urn:li:digitalmediaAsset:C123XYZ"
+                    }
+                }
+            },
+            headers={
+                "Authorization": "Bearer some_token",
+                "Content-Type": "application/json",
+                "X-Restli-Protocol-Version": "2.0.0"
+            }
+        )

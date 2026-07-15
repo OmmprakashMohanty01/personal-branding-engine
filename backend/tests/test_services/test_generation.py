@@ -268,14 +268,21 @@ async def test_daily_draft_automation_success(
     # Set weekday to Monday (0)
     mock_datetime.today.return_value.weekday.return_value = 0
     
-    # Mock CRON_SECRET_KEY env var
-    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key", "HUGGINGFACE_API_KEY": "hf_key"}):
+    # Mock API_CRON_SECRET env var
+    with patch.dict("os.environ", {"API_CRON_SECRET": "super_secret_cron_key", "HUGGINGFACE_API_KEY": "hf_key"}):
         # Mock Gemini response for draft generation
         mock_client_instance = MagicMock()
         mock_interaction = MagicMock()
         mock_interaction.output_text = '{"content_text": "Monday AI update!", "requires_image": true, "image_prompt": "AI robot reading news"}'
         mock_client_instance.interactions.create.return_value = mock_interaction
         mock_genai_client.return_value = mock_client_instance
+        
+        # Mock Cohere response for draft generation Stage 2
+        mock_cohere_resp = MagicMock()
+        mock_content_item = MagicMock()
+        mock_content_item.text = "Monday AI update!"
+        mock_cohere_resp.message.content = [mock_content_item]
+        mock_cohere.return_value = mock_cohere_resp
         
         # Mock generate_metaphorical_image_helper response
         mock_generate_img.return_value = "data:image/jpeg;base64,fake_image_bytes"
@@ -314,7 +321,7 @@ async def test_daily_draft_automation_sunday(
     # Set weekday to Sunday (6)
     mock_datetime.today.return_value.weekday.return_value = 6
     
-    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key"}):
+    with patch.dict("os.environ", {"API_CRON_SECRET": "super_secret_cron_key"}):
         resp = await api_client.post(
             "/api/v1/automation/daily-draft",
             headers={"X-Cron-Secret": "super_secret_cron_key"}

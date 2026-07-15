@@ -67,13 +67,12 @@ async def get_live_news():
             "How modern developer AI agents are changing team dynamics and shipping speeds"
         ]
 
-@router.post("/generate-image", status_code=status.HTTP_200_OK)
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
     """Helper function to generate a base64 encoded metaphorical illustration image."""
     # #region agent log
     _debug_log(
         "generation.py:generate_metaphorical_image_helper",
-        "Helper route handler invoked",
+        "Helper function invoked",
         {"topic": topic, "draft_text_len": len(draft_text) if draft_text else 0},
         "A",
     )
@@ -162,6 +161,7 @@ STRICT RECIPE:
     return f"data:image/jpeg;base64,{encoded_img}"
 
 
+@router.post("/generate-image", status_code=status.HTTP_200_OK)
 async def generate_image_endpoint(
     payload: ImageGenerateRequest,
     request: Request
