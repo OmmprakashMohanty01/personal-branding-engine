@@ -116,7 +116,7 @@ class LinkedInClient:
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401"
+            "LinkedIn-Version": "202606"
         }
         
         image_urn = None
@@ -144,16 +144,19 @@ class LinkedInClient:
                 }
             }
             logger.info(f"[STEP 3] Calling POST {init_url} with owner={account.linkedin_person_urn}")
+            logger.info(f"[LINKEDIN API] Request URL: {init_url} | Version: {rest_headers.get('LinkedIn-Version')}")
             
             async with httpx.AsyncClient() as client:
                 init_resp = await client.post(init_url, json=init_payload, headers=rest_headers)
-                if init_resp.status_code not in (200, 201):
-                    logger.error(f"[STEP 3] initializeUpload FAILED ({init_resp.status_code}): {init_resp.text}")
-                    print(f"[STEP 3] initializeUpload response body: {init_resp.text}")
-                    raise ValueError(
-                        f"LinkedIn initializeUpload failed with status {init_resp.status_code}: {init_resp.text}"
-                    )
-                init_data = init_resp.json()
+            
+            logger.info(f"[LINKEDIN API] Response status: {init_resp.status_code} from {init_url}")
+            if init_resp.status_code not in (200, 201):
+                logger.error(f"[STEP 3] initializeUpload FAILED ({init_resp.status_code}): {init_resp.text}")
+                print(f"[STEP 3] initializeUpload response body: {init_resp.text}")
+                raise ValueError(
+                    f"LinkedIn initializeUpload failed with status {init_resp.status_code}: {init_resp.text}"
+                )
+            init_data = init_resp.json()
             
             # ── STEP 4: Extract uploadUrl and modern image URN ──
             upload_url = init_data["value"]["uploadUrl"]
@@ -171,17 +174,22 @@ class LinkedInClient:
             put_headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/octet-stream",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": "202606"
             }
             logger.info(f"[STEP 5] Uploading {len(image_bytes)} bytes to LinkedIn upload URL...")
+            logger.info(f"[LINKEDIN API] Request URL: {upload_url[:120]}... | Version: {put_headers.get('LinkedIn-Version')}")
             
             async with httpx.AsyncClient(timeout=120.0) as client:
                 put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
-                if put_resp.status_code not in (200, 201):
-                    logger.error(f"[STEP 5-6] PUT upload FAILED ({put_resp.status_code}): {put_resp.text}")
-                    print(f"[STEP 5-6] PUT upload response body: {put_resp.text}")
-                    raise ValueError(
-                        f"LinkedIn image PUT upload failed with status {put_resp.status_code}: {put_resp.text}"
-                    )
+            
+            logger.info(f"[LINKEDIN API] Response status: {put_resp.status_code} from {upload_url[:120]}...")
+            if put_resp.status_code not in (200, 201):
+                logger.error(f"[STEP 5-6] PUT upload FAILED ({put_resp.status_code}): {put_resp.text}")
+                print(f"[STEP 5-6] PUT upload response body: {put_resp.text}")
+                raise ValueError(
+                    f"LinkedIn image PUT upload failed with status {put_resp.status_code}: {put_resp.text}"
+                )
             
             logger.info(f"[STEP 6] PUT upload succeeded with status {put_resp.status_code}")
             
@@ -220,23 +228,25 @@ class LinkedInClient:
         
         logger.info(f"[STEP 9] Final LinkedIn payload: {json_lib.dumps(payload, indent=2)}")
         logger.info(f"[STEP 9] POST {publish_url}")
+        logger.info(f"[LINKEDIN API] Request URL: {publish_url} | Version: {rest_headers.get('LinkedIn-Version')}")
         
         async with httpx.AsyncClient() as client:
             resp = await client.post(publish_url, json=payload, headers=rest_headers)
 
-            if resp.status_code not in (200, 201):
-                logger.error(f"[STEP 9] LinkedIn /rest/posts returned {resp.status_code}: {resp.text}")
-                print(f"[STEP 9] Full error response body: {resp.text}")
-                raise httpx.HTTPStatusError(
-                    f"LinkedIn /rest/posts returned {resp.status_code}.",
-                    request=resp.request,
-                    response=resp
-                )
-                
-            resp.raise_for_status()
-            post_urn = resp.headers.get("x-restli-id") or resp.json().get("id") or "urn:li:share:unknown"
-            logger.info(f"[STEP 9] LinkedIn post published successfully. Post URN: {post_urn}")
-            return post_urn
+        logger.info(f"[LINKEDIN API] Response status: {resp.status_code} from {publish_url}")
+        if resp.status_code not in (200, 201):
+            logger.error(f"[STEP 9] LinkedIn /rest/posts returned {resp.status_code}: {resp.text}")
+            print(f"[STEP 9] Full error response body: {resp.text}")
+            raise httpx.HTTPStatusError(
+                f"LinkedIn /rest/posts returned {resp.status_code}.",
+                request=resp.request,
+                response=resp
+            )
+            
+        resp.raise_for_status()
+        post_urn = resp.headers.get("x-restli-id") or resp.json().get("id") or "urn:li:share:unknown"
+        logger.info(f"[STEP 9] LinkedIn post published successfully. Post URN: {post_urn}")
+        return post_urn
             
     async def exchange_code_for_tokens(self, code: str, redirect_uri: str) -> dict:
         """Exchange redirect code for initial access and refresh tokens."""
@@ -271,21 +281,24 @@ class LinkedInClient:
         url = f"{self.api_url}/v2/userinfo"
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "LinkedIn-Version": "202401"
+            "LinkedIn-Version": "202606"
         }
         
+        logger.info(f"[LINKEDIN API] Request URL: {url} | Version: {headers.get('LinkedIn-Version')}")
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, headers=headers)
-            if resp.status_code != 200 and "mock" in access_token:
-                return "urn:li:person:mock_person_urn"
-            if resp.status_code != 200:
-                logger.error(f"[LINKEDIN PROFILE] userinfo failed ({resp.status_code}): {resp.text}")
-                print(f"[LINKEDIN PROFILE] Full error response: {resp.text}")
-            resp.raise_for_status()
-            data = resp.json()
-            # OpenID Connect 'sub' field is the canonical person identifier
-            profile_id = data.get("sub")
-            if not profile_id:
-                logger.warning(f"[LINKEDIN PROFILE] 'sub' field missing from userinfo response, falling back to 'id'. Data: {data}")
-                profile_id = data.get("id", "unknown")
-            return f"urn:li:person:{profile_id}"
+        
+        logger.info(f"[LINKEDIN API] Response status: {resp.status_code} from {url}")
+        if resp.status_code != 200 and "mock" in access_token:
+            return "urn:li:person:mock_person_urn"
+        if resp.status_code != 200:
+            logger.error(f"[LINKEDIN PROFILE] userinfo failed ({resp.status_code}): {resp.text}")
+            print(f"[LINKEDIN PROFILE] Full error response: {resp.text}")
+        resp.raise_for_status()
+        data = resp.json()
+        # OpenID Connect 'sub' field is the canonical person identifier
+        profile_id = data.get("sub")
+        if not profile_id:
+            logger.warning(f"[LINKEDIN PROFILE] 'sub' field missing from userinfo response, falling back to 'id'. Data: {data}")
+            profile_id = data.get("id", "unknown")
+        return f"urn:li:person:{profile_id}"

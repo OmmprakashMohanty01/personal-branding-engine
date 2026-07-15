@@ -323,7 +323,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             "Authorization": "Bearer some_token",
             "Content-Type": "application/json",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401"
+            "LinkedIn-Version": "202606"
         }
         
         # Assert /rest/images?action=initializeUpload POST was called
@@ -346,6 +346,8 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             headers={
                 "Authorization": "Bearer some_token",
                 "Content-Type": "application/octet-stream",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": "202606"
             }
         )
         
