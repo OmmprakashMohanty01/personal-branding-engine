@@ -314,8 +314,11 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         mock_put_resp = MagicMock(status_code=201)
         mock_put.return_value = mock_put_resp
         
-        image_base64 = "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-        post_urn = await client.publish_post(db_session, account, "Test commentary", image_url=image_base64)
+        import base64
+        expected_bytes = b"a" * 1500
+        image_base64 = "data:image/jpeg;base64," + base64.b64encode(expected_bytes).decode("utf-8")
+        post_text_long = "This is a very long commentary designed to satisfy the strict length check assert of 100 characters in the publish_post method. It needs to be sufficiently descriptive to bypass validation."
+        post_urn = await client.publish_post(db_session, account, post_text_long, image_url=image_base64)
         
         assert post_urn == "urn:li:share:post_123_abc"
         
@@ -338,16 +341,12 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         )
         
         # Assert PUT request was called with binary data and correct headers
-        import base64
-        expected_bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
         mock_put.assert_called_once_with(
             "https://www.linkedin.com/dms-uploads/image-upload-target-123",
             content=expected_bytes,
             headers={
-                "Authorization": "Bearer some_token",
+                "Content-Length": str(len(expected_bytes)),
                 "Content-Type": "application/octet-stream",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": "202606"
             }
         )
         
@@ -356,7 +355,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             "https://api.linkedin.com/rest/posts",
             json={
                 "author": "urn:li:person:abc",
-                "commentary": "Test commentary",
+                "commentary": post_text_long,
                 "visibility": "PUBLIC",
                 "distribution": {
                     "feedDistribution": "MAIN_FEED",
@@ -364,10 +363,10 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
                     "thirdPartyDistributionChannels": []
                 },
                 "lifecycleState": "PUBLISHED",
-                "isReshareDisabledByAuthor": False,
                 "content": {
                     "media": {
-                        "id": "urn:li:image:C4E22AQH1234567890"
+                        "id": "urn:li:image:C4E22AQH1234567890",
+                        "title": "AI Generated Visual"
                     }
                 }
             },

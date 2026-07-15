@@ -127,19 +127,36 @@ class GenerationOrchestrator:
             except json.JSONDecodeError:
                 # Robust regex-based fallback for unescaped newlines and other parsing errors
                 parsed_data = {}
-                content_text_match = re.search(r'"content_text"\s*:\s*"(.*?)"\s*,\s*"requires_image"', clean_output, re.DOTALL)
+                content_text_match = re.search(r'"content_text"\s*:\s*"(.*)"\s*,\s*"requires_image"', clean_output, re.DOTALL)
                 if not content_text_match:
-                    content_text_match = re.search(r'"content_text"\s*:\s*"(.*?)"\s*(?:,|\s*})', clean_output, re.DOTALL)
+                    content_text_match = re.search(r'"content_text"\s*:\s*"(.*)"', clean_output, re.DOTALL)
                 
                 requires_image_match = re.search(r'"requires_image"\s*:\s*(true|false)', clean_output, re.IGNORECASE)
-                image_prompt_match = re.search(r'"image_prompt"\s*:\s*"(.*?)"\s*(?:,|\s*})', clean_output, re.DOTALL)
+                image_prompt_match = re.search(r'"image_prompt"\s*:\s*"(.*)"', clean_output, re.DOTALL)
                 
                 if content_text_match:
-                    parsed_data["content_text"] = content_text_match.group(1)
+                    val = content_text_match.group(1)
+                    # Clean up trailing structural characters captured by greedy matching
+                    if '",\n  "requires_image"' in val:
+                        val = val.split('",\n  "requires_image"')[0]
+                    elif '",\r\n  "requires_image"' in val:
+                        val = val.split('",\r\n  "requires_image"')[0]
+                    elif '",\n"requires_image"' in val:
+                        val = val.split('",\n"requires_image"')[0]
+                    elif '", "requires_image"' in val:
+                        val = val.split('", "requires_image"')[0]
+                    elif '"' in val:
+                        val = val.rsplit('"', 1)[0]
+                    parsed_data["content_text"] = val
+                    
                 if requires_image_match:
                      parsed_data["requires_image"] = requires_image_match.group(1).lower() == "true"
+                     
                 if image_prompt_match:
-                     parsed_data["image_prompt"] = image_prompt_match.group(1)
+                     val_prompt = image_prompt_match.group(1)
+                     if '"' in val_prompt:
+                         val_prompt = val_prompt.split('"')[0]
+                     parsed_data["image_prompt"] = val_prompt
                 
                 if not parsed_data:
                     raise ValueError("Could not parse JSON even with robust regex extraction")

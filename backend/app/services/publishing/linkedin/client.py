@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import httpx
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration import LinkedInAccount
@@ -120,6 +121,7 @@ class LinkedInClient:
         }
         
         image_urn = None
+        image_bytes = None
         if image_url:
             # Guard: refuse image upload with mock/sandbox credentials
             if "mock" in (account.linkedin_person_urn or ""):
@@ -172,26 +174,27 @@ class LinkedInClient:
             
             # ── STEP 5-6: PUT JPEG bytes to uploadUrl ──
             put_headers = {
-                "Authorization": f"Bearer {access_token}",
+                "Content-Length": str(len(image_bytes)),
                 "Content-Type": "application/octet-stream",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": "202606"
             }
             logger.info(f"[STEP 5] Uploading {len(image_bytes)} bytes to LinkedIn upload URL...")
-            logger.info(f"[LINKEDIN API] Request URL: {upload_url[:120]}... | Version: {put_headers.get('LinkedIn-Version')}")
+            logger.info(f"[LINKEDIN API] Request URL: {upload_url[:120]}...")
             
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+                    put_resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"[STEP 5-6] PUT upload FAILED ({e.response.status_code}): {e.response.text}")
+                print(f"[STEP 5-6] PUT upload response body: {e.response.text}")
+                raise e
             
             logger.info(f"[LINKEDIN API] Response status: {put_resp.status_code} from {upload_url[:120]}...")
-            if put_resp.status_code not in (200, 201):
-                logger.error(f"[STEP 5-6] PUT upload FAILED ({put_resp.status_code}): {put_resp.text}")
-                print(f"[STEP 5-6] PUT upload response body: {put_resp.text}")
-                raise ValueError(
-                    f"LinkedIn image PUT upload failed with status {put_resp.status_code}: {put_resp.text}"
-                )
-            
             logger.info(f"[STEP 6] PUT upload succeeded with status {put_resp.status_code}")
+            
+            # Wait 5 seconds for LinkedIn's CDN/media pipeline to process the uploaded image
+            logger.info("Sleeping for 5 seconds to allow LinkedIn to process the uploaded image...")
+            await asyncio.sleep(5)
             
             # ── STEP 7: Confirm image URN ──
             logger.info(f"[STEP 7] Image URN confirmed: {image_urn}")
@@ -214,14 +217,14 @@ class LinkedInClient:
                 "targetEntities": [],
                 "thirdPartyDistributionChannels": []
             },
-            "lifecycleState": "PUBLISHED",
-            "isReshareDisabledByAuthor": False
+            "lifecycleState": "PUBLISHED"
         }
         
         if image_urn:
             payload["content"] = {
                 "media": {
-                    "id": image_urn
+                    "id": image_urn,
+                    "title": "AI Generated Visual"
                 }
             }
             logger.info(f"[STEP 8] Attached image URN {image_urn} to post payload")
@@ -230,6 +233,14 @@ class LinkedInClient:
         logger.info(f"[STEP 9] POST {publish_url}")
         logger.info(f"[LINKEDIN API] Request URL: {publish_url} | Version: {rest_headers.get('LinkedIn-Version')}")
         
+        print(f"\n[DEBUG PAYLOAD TEXT LENGTH]: {len(text)} chars\n[DEBUG TEXT END]: {text[-50:]}\n")
+        
+        # Task 3: Inject Validation Assertions right before posting to publish
+        post_text = text
+        assert len(post_text) > 100, "Text was truncated prematurely"
+        if image_url:
+            assert isinstance(image_bytes, bytes) and len(image_bytes) > 1000, "Image bytes are corrupted or empty"
+            
         async with httpx.AsyncClient() as client:
             resp = await client.post(publish_url, json=payload, headers=rest_headers)
 
