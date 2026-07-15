@@ -342,7 +342,8 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             headers={
                 "Authorization": "Bearer some_token",
                 "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0"
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": "202401"
             }
         )
         
@@ -352,7 +353,12 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         mock_put.assert_called_once_with(
             "https://api.linkedin.com/upload-target-123",
             content=expected_bytes,
-            headers={"Content-Type": "application/octet-stream"}
+            headers={
+                "Authorization": "Bearer some_token",
+                "Content-Type": "application/octet-stream",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": "202401"
+            }
         )
         
         # Assert posts POST was called with content media URN and shareMediaCategory
@@ -379,6 +385,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             headers={
                 "Authorization": "Bearer some_token",
                 "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0"
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": "202401"
             }
         )

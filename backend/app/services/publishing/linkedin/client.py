@@ -116,7 +116,8 @@ class LinkedInClient:
                 register_headers = {
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json",
-                    "X-Restli-Protocol-Version": "2.0.0"
+                    "X-Restli-Protocol-Version": "2.0.0",
+                    "LinkedIn-Version": "202401"
                 }
                 register_payload = {
                     "registerUploadRequest": {
@@ -133,6 +134,9 @@ class LinkedInClient:
                 }
                 async with httpx.AsyncClient() as client:
                     reg_resp = await client.post(register_url, json=register_payload, headers=register_headers)
+                    if reg_resp.status_code not in (200, 201):
+                        logger.error(f"[LINKEDIN IMAGE] registerUpload failed ({reg_resp.status_code}): {reg_resp.text}")
+                        print(f"[LINKEDIN IMAGE] registerUpload response body: {reg_resp.text}")
                     reg_resp.raise_for_status()
                     reg_data = reg_resp.json()
                     
@@ -151,12 +155,22 @@ class LinkedInClient:
                 
                 # PUT raw binary bytes to upload URL
                 put_headers = {
-                    "Content-Type": "application/octet-stream"
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/octet-stream",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                    "LinkedIn-Version": "202401"
                 }
                 async with httpx.AsyncClient() as client:
                     put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+                    if put_resp.status_code not in (200, 201):
+                        logger.error(f"[LINKEDIN IMAGE] PUT upload failed ({put_resp.status_code}): {put_resp.text}")
+                        print(f"[LINKEDIN IMAGE] PUT upload response body: {put_resp.text}")
                     put_resp.raise_for_status()
                 logger.info("Successfully uploaded image bytes to LinkedIn.")
+            except httpx.HTTPStatusError as upload_err:
+                logger.error(f"[LINKEDIN IMAGE] HTTP error during image upload: {upload_err}")
+                print(f"[LINKEDIN IMAGE] Full error response: {upload_err.response.text}")
+                asset_urn = None
             except Exception as upload_err:
                 logger.error(f"Failed to upload image to LinkedIn, posting text-only fallback: {upload_err}")
                 asset_urn = None
@@ -165,7 +179,8 @@ class LinkedInClient:
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "X-Restli-Protocol-Version": "2.0.0"
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202401"
         }
         
         share_media_category = "IMAGE" if asset_urn else "NONE"
@@ -196,9 +211,10 @@ class LinkedInClient:
         
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload, headers=headers)
-            
 
             if resp.status_code not in (200, 201):
+                logger.error(f"[LINKEDIN PUBLISH] API returned {resp.status_code}: {resp.text}")
+                print(f"[LINKEDIN PUBLISH] Full error response body: {resp.text}")
                 raise httpx.HTTPStatusError(
                     f"LinkedIn publishing API returned non-strict success status {resp.status_code}.",
                     request=resp.request,
@@ -235,15 +251,29 @@ class LinkedInClient:
             return resp.json()
 
     async def fetch_profile_urn(self, access_token: str) -> str:
-        """Fetch authenticated user profile URN using me endpoint."""
-        url = f"{self.api_url}/v2/userinfo" # standard OpenID Userinfo
-        headers = {"Authorization": f"Bearer {access_token}"}
+        """Fetch authenticated user profile URN using OpenID Connect userinfo endpoint.
+        
+        Uses /v2/userinfo (NOT /v2/me) and extracts the 'sub' field
+        to construct the owner URN as urn:li:person:{sub}.
+        """
+        url = f"{self.api_url}/v2/userinfo"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "LinkedIn-Version": "202401"
+        }
         
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code != 200 and "mock" in access_token:
                 return "urn:li:person:mock_person_urn"
+            if resp.status_code != 200:
+                logger.error(f"[LINKEDIN PROFILE] userinfo failed ({resp.status_code}): {resp.text}")
+                print(f"[LINKEDIN PROFILE] Full error response: {resp.text}")
             resp.raise_for_status()
-            # Standard sub field or id contains the principal identifier
-            profile_id = resp.json().get("sub") or resp.json().get("id", "mock_id")
+            data = resp.json()
+            # OpenID Connect 'sub' field is the canonical person identifier
+            profile_id = data.get("sub")
+            if not profile_id:
+                logger.warning(f"[LINKEDIN PROFILE] 'sub' field missing from userinfo response, falling back to 'id'. Data: {data}")
+                profile_id = data.get("id", "unknown")
             return f"urn:li:person:{profile_id}"
