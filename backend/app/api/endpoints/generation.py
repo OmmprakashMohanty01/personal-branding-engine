@@ -2,6 +2,8 @@ import httpx
 import requests
 import uuid
 import os
+import json
+import time
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -16,6 +18,25 @@ from app.services.publishing.orchestrator import PublishingOrchestrator
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
 logger = logging.getLogger("branding_engine.api.generation")
+DEBUG_LOG_PATH = "/Users/ommprakashmohanty/personal-branding-engine/.cursor/debug-5139fb.log"
+
+
+def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
+    # #region agent log
+    try:
+        with open(DEBUG_LOG_PATH, "a") as f:
+            f.write(json.dumps({
+                "sessionId": "5139fb",
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+                "hypothesisId": hypothesis_id,
+                "runId": "pre-fix",
+            }) + "\n")
+    except Exception:
+        pass
+    # #endregion
 gen_orchestrator = GenerationOrchestrator()
 pub_orchestrator = PublishingOrchestrator()
 
@@ -49,6 +70,14 @@ async def get_live_news():
 @router.post("/generate-image", status_code=status.HTTP_200_OK)
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
     """Helper function to generate a base64 encoded metaphorical illustration image."""
+    # #region agent log
+    _debug_log(
+        "generation.py:generate_metaphorical_image_helper",
+        "Helper route handler invoked",
+        {"topic": topic, "draft_text_len": len(draft_text) if draft_text else 0},
+        "A",
+    )
+    # #endregion
     hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
     if not hf_api_key:
         raise HTTPException(
@@ -138,6 +167,18 @@ async def generate_image_endpoint(
     request: Request
 ):
     """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
+    # #region agent log
+    _debug_log(
+        "generation.py:generate_image_endpoint",
+        "Endpoint handler invoked",
+        {
+            "topic": payload.topic,
+            "draft_text_len": len(payload.draft_text) if payload.draft_text else 0,
+            "content_type": request.headers.get("content-type"),
+        },
+        "A",
+    )
+    # #endregion
     try:
         topic = payload.topic or "technology branding"
         draft_text = payload.draft_text or ""

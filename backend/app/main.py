@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+import json
+import time
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.api.endpoints.generation import router as generation_router
 from app.api.endpoints.publishing import router as publishing_router
 from app.api.endpoints.health import router as health_router
@@ -11,6 +16,53 @@ app = FastAPI(
     description="Minimal REST API backend and orchestration engine automating LinkedIn content generation and publishing.",
     version="1.0"
 )
+
+DEBUG_LOG_PATH = "/Users/ommprakashmohanty/personal-branding-engine/.cursor/debug-5139fb.log"
+
+
+def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
+    # #region agent log
+    try:
+        with open(DEBUG_LOG_PATH, "a") as f:
+            f.write(json.dumps({
+                "sessionId": "5139fb",
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+                "hypothesisId": hypothesis_id,
+                "runId": "pre-fix",
+            }) + "\n")
+    except Exception:
+        pass
+    # #endregion
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # #region agent log
+    body_preview = None
+    if request.url.path.endswith("/generate-image"):
+        try:
+            body_bytes = await request.body()
+            body_preview = body_bytes.decode("utf-8")[:500]
+        except Exception as e:
+            body_preview = f"<read error: {e}>"
+    _debug_log(
+        "main.py:validation_exception_handler",
+        "Request validation failed",
+        {
+            "path": request.url.path,
+            "method": request.method,
+            "query_params": dict(request.query_params),
+            "content_type": request.headers.get("content-type"),
+            "body_preview": body_preview,
+            "errors": exc.errors(),
+        },
+        "A,B,C,D,E",
+    )
+    # #endregion
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 # CORS Configuration
 allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",")] if settings.ALLOWED_ORIGINS else ["*"]
