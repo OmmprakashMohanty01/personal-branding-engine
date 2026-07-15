@@ -172,6 +172,28 @@ async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock,
     assert db_draft.status == "FAILED"
 
 
+@pytest.mark.asyncio
+async def test_orchestrator_publishing_requires_image_but_missing(db_session: AsyncSession):
+    from fastapi import HTTPException
+    
+    # Seed draft with requires_image: True, but no image_url in database
+    draft = ContentDraft(
+        id="d-12",
+        content_text="LinkedIn post text",
+        status="DRAFT",
+        llm_metadata={"requires_image": True}
+    )
+    db_session.add(draft)
+    await db_session.commit()
+    
+    orchestrator = PublishingOrchestrator()
+    with pytest.raises(HTTPException) as exc_info:
+        await orchestrator.publish_draft(db_session, "d-12")
+        
+    assert exc_info.value.status_code == 400
+    assert "Image generated but not saved to database" in exc_info.value.detail
+
+
 # ==========================================
 # 4. API CONTROLLER TESTS
 # ==========================================

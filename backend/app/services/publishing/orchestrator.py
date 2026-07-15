@@ -56,10 +56,20 @@ class PublishingOrchestrator:
             await db.refresh(draft)
             raise ValueError(f"Pre-flight validation failed: LinkedIn post exceeds 3,000-character limit ({len(post_text)} characters).")
 
+        metadata = draft.llm_metadata or {}
+        requires_image = metadata.get("requires_image")
+        image_url = metadata.get("image_url")
+        
+        if requires_image and not image_url:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="Image generated but not saved to database. Please click 'Save Changes' before publishing."
+            )
+
         try:
             account = await self._get_default_linkedin_account(db)
             
-            image_url = (draft.llm_metadata or {}).get("image_url")
             # Dispatch to LinkedIn Post API
             post_urn = await self.linkedin_client.publish_post(db, account, post_text, image_url=image_url)
             
