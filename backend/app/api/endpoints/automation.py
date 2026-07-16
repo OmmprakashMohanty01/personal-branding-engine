@@ -1,7 +1,9 @@
 import logging
 import os
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,38 +15,55 @@ router = APIRouter(prefix="/automation", tags=["Automation"])
 logger = logging.getLogger("branding_engine.api.automation")
 
 DAILY_SCHEDULE = {
-    0: "AI News + Analysis",
-    1: "Build in Public / Project Progress",
-    2: "Technical Tutorial / Framework",
-    3: "Career or Productivity Insight",
-    4: "Tool or Software Review",
-    5: "Weekly Wins or Lessons Learned"
+    0: "Write an engaging post analyzing a piece of breaking AI news.",
+    1: "Write a 'Build in Public' post about a coding challenge.",
+    2: "Write a Technical Tutorial or Framework breakdown.",
+    3: "Write a Career or Productivity Insight for software engineers.",
+    4: "Write a Tool or Software Review.",
+    5: "Write about Weekly Wins or Lessons Learned."
 }
 
 @router.post("/daily-draft", response_model=DraftResponse)
 async def generate_daily_draft(
-    x_cron_secret: str = Header(..., description="API key to authorize Render Cron Job"),
+    request: Request,
+    cron_secret_key: Optional[str] = Query(None, alias="cron_secret_key"),
+    x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
     db: AsyncSession = Depends(get_db)
 ):
     """Secured endpoint to generate a daily draft based on the content strategy schedule."""
-    # Verify API_CRON_SECRET
-    expected_secret = os.getenv("API_CRON_SECRET")
+    # Verify API_CRON_SECRET or CRON_SECRET_KEY
+    expected_secret = os.getenv("CRON_SECRET_KEY") or os.getenv("API_CRON_SECRET")
     if not expected_secret:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="API_CRON_SECRET is not configured on the server."
+            detail="CRON_SECRET_KEY is not configured on the server."
         )
-    if x_cron_secret != expected_secret:
+        
+    # Get secret from header or query parameters
+    provided_secret = (
+        x_cron_secret
+        or cron_secret_key
+        or request.headers.get("cron_secret_key")
+        or request.headers.get("CRON_SECRET_KEY")
+        or request.headers.get("x-cron-secret-key")
+        or request.headers.get("x-cron-secret")
+        or request.query_params.get("cron_secret_key")
+        or request.query_params.get("CRON_SECRET_KEY")
+        or request.query_params.get("cron_secret")
+    )
+    
+    if not provided_secret or provided_secret != expected_secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized: Invalid Cron Secret Key."
         )
         
-    weekday = datetime.today().weekday()
+    # Determine the day of the week
+    weekday = datetime.datetime.today().weekday()
     if weekday == 6: # Sunday
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            detail="Sunday: Rest day, no automated post draft generated."
+            content={"detail": "Sunday: Rest day, no post generated today."}
         )
         
     topic = DAILY_SCHEDULE.get(weekday)

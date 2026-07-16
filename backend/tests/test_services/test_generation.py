@@ -266,10 +266,10 @@ async def test_daily_draft_automation_success(
     db_session: AsyncSession
 ):
     # Set weekday to Monday (0)
-    mock_datetime.today.return_value.weekday.return_value = 0
+    mock_datetime.datetime.today.return_value.weekday.return_value = 0
     
-    # Mock API_CRON_SECRET env var
-    with patch.dict("os.environ", {"API_CRON_SECRET": "super_secret_cron_key", "HUGGINGFACE_API_KEY": "hf_key"}):
+    # Mock CRON_SECRET_KEY env var
+    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key", "HUGGINGFACE_API_KEY": "hf_key"}):
         # Mock Gemini response for draft generation
         mock_client_instance = MagicMock()
         mock_interaction = MagicMock()
@@ -287,9 +287,9 @@ async def test_daily_draft_automation_success(
         # Mock generate_metaphorical_image_helper response
         mock_generate_img.return_value = "data:image/jpeg;base64,fake_image_bytes"
         
-        # Call endpoint without secret header
+        # Call endpoint without secret
         resp_no_header = await api_client.post("/api/v1/automation/daily-draft")
-        assert resp_no_header.status_code == 422  # Missing header validation error
+        assert resp_no_header.status_code == 401  # Missing auth returns 401 now that headers/query are both optional in FastAPI signature
         
         # Call endpoint with invalid secret
         resp_invalid = await api_client.post(
@@ -299,17 +299,24 @@ async def test_daily_draft_automation_success(
         assert resp_invalid.status_code == 401
         assert "Invalid Cron Secret" in resp_invalid.json()["detail"]
         
-        # Call endpoint with valid secret
-        resp_valid = await api_client.post(
+        # Call endpoint with valid secret in header
+        resp_valid_header = await api_client.post(
             "/api/v1/automation/daily-draft",
             headers={"X-Cron-Secret": "super_secret_cron_key"}
         )
-        assert resp_valid.status_code == 200
-        data = resp_valid.json()
+        assert resp_valid_header.status_code == 200
+        data = resp_valid_header.json()
         assert data["content_text"] == "Monday AI update!"
         assert data["status"] == "DRAFT"
         assert "image_url" in data["llm_metadata"]
         assert data["llm_metadata"]["image_url"] == "data:image/jpeg;base64,fake_image_bytes"
+
+        # Call endpoint with valid secret in query param
+        resp_valid_query = await api_client.post(
+            "/api/v1/automation/daily-draft?cron_secret_key=super_secret_cron_key"
+        )
+        assert resp_valid_query.status_code == 200
+        assert resp_valid_query.json()["content_text"] == "Monday AI update!"
 
 
 @pytest.mark.asyncio
@@ -319,12 +326,13 @@ async def test_daily_draft_automation_sunday(
     api_client: httpx.AsyncClient,
 ):
     # Set weekday to Sunday (6)
-    mock_datetime.today.return_value.weekday.return_value = 6
+    mock_datetime.datetime.today.return_value.weekday.return_value = 6
     
-    with patch.dict("os.environ", {"API_CRON_SECRET": "super_secret_cron_key"}):
+    with patch.dict("os.environ", {"CRON_SECRET_KEY": "super_secret_cron_key"}):
         resp = await api_client.post(
             "/api/v1/automation/daily-draft",
             headers={"X-Cron-Secret": "super_secret_cron_key"}
         )
         assert resp.status_code == 200
         assert "Rest day" in resp.json()["detail"]
+
