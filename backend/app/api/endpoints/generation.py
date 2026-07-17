@@ -132,29 +132,43 @@ STRICT RECIPE:
 
     headers = {"Authorization": f"Bearer {hf_api_key}"}
     hf_payload = {"inputs": prompt}
-    MODEL_ID = "black-forest-labs/FLUX.1-schnell"
-    hf_url = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
+    
+    fallback_urls = [
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev",
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3.5-large",
+        "https://router.huggingface.co/hf-inference/models/runwayml/stable-diffusion-v1-5"
+    ]
 
-    print(f"Attempting to reach: {hf_url}")
+    resp = None
+    last_error = None
 
-    try:
-        # Async httpx client to prevent blocking the main event loop
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(hf_url, json=hf_payload, headers=headers)
-        
-        print("Status:", resp.status_code)
-        print("Body:", resp.text[:500])
-        
-        if resp.status_code != 200:
-            error_detail = resp.text
-            try:
-                error_detail = resp.json().get("error", resp.text)
-            except:
-                pass
-            raise ValueError(f"Hugging Face API returned status {resp.status_code}: {error_detail}")
-    except Exception as hf_err:
-        logger.error(f"Hugging Face API call failed: {hf_err}")
-        raise ValueError(f"Hugging Face network error: {str(hf_err)}")
+    for url in fallback_urls:
+        print(f"Attempting to reach: {url}")
+        try:
+            # Async httpx client to prevent blocking the main event loop
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(url, json=hf_payload, headers=headers)
+            
+            print("Status:", r.status_code)
+            print("Body:", r.text[:500])
+            
+            if r.status_code == 200:
+                resp = r
+                break
+            else:
+                error_detail = r.text
+                try:
+                    error_detail = r.json().get("error", r.text)
+                except:
+                    pass
+                raise ValueError(f"Hugging Face API returned status {r.status_code}: {error_detail}")
+        except Exception as hf_err:
+            logger.warning(f"Hugging Face API call failed for {url}: {hf_err}")
+            last_error = hf_err
+
+    if resp is None:
+        error_msg = str(last_error) if last_error else "All models failed"
+        raise ValueError(f"Hugging Face network error: {error_msg}")
     
     import base64
     encoded_img = base64.b64encode(resp.content).decode("utf-8")
