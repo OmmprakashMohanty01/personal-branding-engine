@@ -144,12 +144,16 @@ STRICT RECIPE:
                 duration = time.perf_counter() - start_time
                 
                 logger.info(
-                    f"Image generation succeeded. "
-                    f"Provider: Pollinations | "
-                    f"Duration: {duration:.2f} s | "
-                    f"Prompt length: {len(prompt)} chars | "
-                    f"Image size: {len(image_bytes) / 1024:.2f} KB | "
-                    f"Attempt: {attempt + 1}/{max_retries}"
+                    "Image generation succeeded.",
+                    extra={
+                        "event": "image_generation_success",
+                        "provider": "Pollinations",
+                        "duration_sec": duration,
+                        "prompt_length": len(prompt),
+                        "image_size_kb": len(image_bytes) / 1024,
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries
+                    }
                 )
                 
                 import base64
@@ -166,10 +170,15 @@ STRICT RECIPE:
             if is_last_attempt or not is_transient:
                 if isinstance(e, httpx.TimeoutException):
                     logger.error(
-                        f"Image generation request timed out on final attempt. "
-                        f"Duration: {duration:.2f} s | "
-                        f"Attempt: {attempt + 1}/{max_retries} | "
-                        f"Error: {e}"
+                        "Image generation request timed out on final attempt.",
+                        extra={
+                            "event": "image_generation_timeout_fatal",
+                            "provider": "Pollinations",
+                            "duration_sec": duration,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "error": str(e)
+                        }
                     )
                     raise HTTPException(
                         status_code=504,
@@ -177,10 +186,16 @@ STRICT RECIPE:
                     )
                 else:
                     logger.error(
-                        f"Image generation API returned HTTP error on final/fatal attempt ({e.response.status_code}). "
-                        f"Duration: {duration:.2f} s | "
-                        f"Attempt: {attempt + 1}/{max_retries} | "
-                        f"Response: {e.response.text}"
+                        f"Image generation API returned HTTP error on final/fatal attempt ({e.response.status_code}).",
+                        extra={
+                            "event": "image_generation_http_error_fatal",
+                            "provider": "Pollinations",
+                            "duration_sec": duration,
+                            "status_code": e.response.status_code,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "response": e.response.text
+                        }
                     )
                     status_code = 502 if e.response.status_code >= 500 else 400
                     raise HTTPException(
@@ -189,19 +204,30 @@ STRICT RECIPE:
                     )
             
             logger.warning(
-                f"Transient error occurred during image generation ({e}). "
-                f"Duration: {duration:.2f} s | "
-                f"Retrying (attempt {attempt + 1}/{max_retries})..."
+                f"Transient error occurred during image generation ({e}).",
+                extra={
+                    "event": "image_generation_transient_error",
+                    "provider": "Pollinations",
+                    "duration_sec": duration,
+                    "attempt": attempt + 1,
+                    "max_retries": max_retries,
+                    "error": str(e)
+                }
             )
             await asyncio.sleep(1.0)
 
         except Exception as e:
             duration = time.perf_counter() - start_time
             logger.error(
-                f"Image generation failed with unexpected error. "
-                f"Duration: {duration:.2f} s | "
-                f"Attempt: {attempt + 1}/{max_retries} | "
-                f"Error: {e}"
+                "Image generation failed with unexpected error.",
+                extra={
+                    "event": "image_generation_error_fatal",
+                    "provider": "Pollinations",
+                    "duration_sec": duration,
+                    "attempt": attempt + 1,
+                    "max_retries": max_retries,
+                    "error": str(e)
+                }
             )
             raise HTTPException(
                 status_code=500, 
