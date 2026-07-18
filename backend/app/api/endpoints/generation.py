@@ -142,14 +142,20 @@ STRICT RECIPE:
             encoded_img = base64.b64encode(image_bytes).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded_img}"
 
+    except httpx.TimeoutException as e:
+        logger.error(f"Image generation request timed out: {e}")
+        raise HTTPException(
+            status_code=504,
+            detail="Image generation request timed out. Please try again."
+        )
     except httpx.HTTPStatusError as e:
-        # Stop faking a 200 OK! Raise a proper Bad Gateway error.
+        logger.error(f"Image generation API returned HTTP error {e.response.status_code}: {e.response.text}")
         raise HTTPException(
             status_code=502, 
             detail=f"Image generation API failed: {e.response.status_code}"
         )
     except Exception as e:
-        # Catch any true network/timeout errors
+        logger.error(f"Image generation failed with unexpected network error: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Image generation network error: {str(e)}"
