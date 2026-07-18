@@ -131,6 +131,7 @@ STRICT RECIPE:
 
     max_retries = 2
     for attempt in range(max_retries):
+        start_time = time.perf_counter()
         try:
             # 3. Fetch the image asynchronously 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -140,12 +141,23 @@ STRICT RECIPE:
                 response.raise_for_status() 
                 
                 image_bytes = response.content
+                duration = time.perf_counter() - start_time
+                
+                logger.info(
+                    f"Image generation succeeded. "
+                    f"Provider: Pollinations | "
+                    f"Duration: {duration:.2f} s | "
+                    f"Prompt length: {len(prompt)} chars | "
+                    f"Image size: {len(image_bytes) / 1024:.2f} KB | "
+                    f"Attempt: {attempt + 1}/{max_retries}"
+                )
                 
                 import base64
                 encoded_img = base64.b64encode(image_bytes).decode("utf-8")
                 return f"data:image/jpeg;base64,{encoded_img}"
 
         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+            duration = time.perf_counter() - start_time
             is_last_attempt = (attempt == max_retries - 1)
             is_transient = isinstance(e, httpx.TimeoutException) or (
                 isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500
@@ -153,24 +165,44 @@ STRICT RECIPE:
             
             if is_last_attempt or not is_transient:
                 if isinstance(e, httpx.TimeoutException):
-                    logger.error(f"Image generation request timed out on final attempt: {e}")
+                    logger.error(
+                        f"Image generation request timed out on final attempt. "
+                        f"Duration: {duration:.2f} s | "
+                        f"Attempt: {attempt + 1}/{max_retries} | "
+                        f"Error: {e}"
+                    )
                     raise HTTPException(
                         status_code=504,
                         detail="Image generation request timed out. Please try again."
                     )
                 else:
-                    logger.error(f"Image generation API returned HTTP error on final/fatal attempt ({e.response.status_code}): {e.response.text}")
+                    logger.error(
+                        f"Image generation API returned HTTP error on final/fatal attempt ({e.response.status_code}). "
+                        f"Duration: {duration:.2f} s | "
+                        f"Attempt: {attempt + 1}/{max_retries} | "
+                        f"Response: {e.response.text}"
+                    )
                     status_code = 502 if e.response.status_code >= 500 else 400
                     raise HTTPException(
                         status_code=status_code,
                         detail="Image generation service is temporarily unavailable. Please try again."
                     )
             
-            logger.warning(f"Transient error occurred during image generation ({e}). Retrying (attempt {attempt + 1}/{max_retries})...")
+            logger.warning(
+                f"Transient error occurred during image generation ({e}). "
+                f"Duration: {duration:.2f} s | "
+                f"Retrying (attempt {attempt + 1}/{max_retries})..."
+            )
             await asyncio.sleep(1.0)
 
         except Exception as e:
-            logger.error(f"Image generation failed with unexpected error: {e}")
+            duration = time.perf_counter() - start_time
+            logger.error(
+                f"Image generation failed with unexpected error. "
+                f"Duration: {duration:.2f} s | "
+                f"Attempt: {attempt + 1}/{max_retries} | "
+                f"Error: {e}"
+            )
             raise HTTPException(
                 status_code=500, 
                 detail="Image generation failed due to a network error. Please try again."
