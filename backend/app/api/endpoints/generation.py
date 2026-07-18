@@ -1,4 +1,5 @@
 import httpx
+import urllib.parse
 import requests
 import uuid
 import os
@@ -77,15 +78,6 @@ async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str
         "A",
     )
     # #endregion
-    hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
-    if not hf_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="HUGGINGFACE_API_KEY is missing from environment. Please add it to your .env file."
-        )
-    
-    hf_api_key = hf_api_key.strip('"').strip("'")
-    
     # Asynchronously call the FallbackLLMProvider to write the metaphorical image prompt dynamically
     system_prompt = """
 You are a brilliant graphic designer creating thumbnails for a tech blog. 
@@ -130,47 +122,38 @@ STRICT RECIPE:
             prompt = f"A high-quality, professional, cinematic illustration representing: {topic}"
     print(f"Generated prompt: {prompt}")
 
-    headers = {"Authorization": f"Bearer {hf_api_key}"}
-    hf_payload = {"inputs": prompt}
-    
-    fallback_urls = [
-        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
-        "https://router.huggingface.co/hf-inference/models/prompthero/openjourney",
-        "https://router.huggingface.co/hf-inference/models/Lykon/dreamshaper-8"
-    ]
+    # 1. URL-encode your LLM-generated prompt so it is safe for a web link
+    encoded_prompt = urllib.parse.quote(prompt)
 
-    resp_content = None
-    last_error = None
+    # 2. Construct the keyless Pollinations URL
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        for url in fallback_urls:
-            print(f"Attempting to reach: {url}")
-            try:
-                r = await client.post(url, json=hf_payload, headers=headers)
-                print("Status:", r.status_code)
-                print("Body:", r.text[:500])
-                
-                if r.status_code == 200:
-                    resp_content = r.content
-                    break
-                else:
-                    error_detail = r.text
-                    try:
-                        error_detail = r.json().get("error", r.text)
-                    except:
-                        pass
-                    raise ValueError(f"Hugging Face API returned status {r.status_code}: {error_detail}")
-            except Exception as hf_err:
-                logger.warning(f"Hugging Face API call failed for {url}: {hf_err}")
-                last_error = hf_err
+    try:
+        # 3. Fetch the image asynchronously 
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(image_url)
+            
+            # If the API fails, this safely triggers the exception block below
+            response.raise_for_status() 
+            
+            image_bytes = response.content
+            
+            import base64
+            encoded_img = base64.b64encode(image_bytes).decode("utf-8")
+            return f"data:image/jpeg;base64,{encoded_img}"
 
-    if resp_content is None:
-        error_msg = str(last_error) if last_error else "All models failed"
-        raise ValueError(f"Hugging Face network error: {error_msg}")
-    
-    import base64
-    encoded_img = base64.b64encode(resp_content).decode("utf-8")
-    return f"data:image/jpeg;base64,{encoded_img}"
+    except httpx.HTTPStatusError as e:
+        # Stop faking a 200 OK! Raise a proper Bad Gateway error.
+        raise HTTPException(
+            status_code=502, 
+            detail=f"Image generation API failed: {e.response.status_code}"
+        )
+    except Exception as e:
+        # Catch any true network/timeout errors
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Image generation network error: {str(e)}"
+        )
 
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)
