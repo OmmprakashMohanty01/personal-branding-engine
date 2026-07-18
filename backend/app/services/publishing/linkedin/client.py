@@ -183,6 +183,7 @@ class LinkedInClient:
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
+                    print(f"\n[DEBUG PUT UPLOAD] Status: {put_resp.status_code} | Body: {put_resp.text}\n")
                     put_resp.raise_for_status()
             except httpx.HTTPStatusError as e:
                 logger.error(f"[STEP 5-6] PUT upload FAILED ({e.response.status_code}): {e.response.text}")
@@ -195,6 +196,14 @@ class LinkedInClient:
             # Wait 5 seconds for LinkedIn's CDN/media pipeline to process the uploaded image
             logger.info("Sleeping for 5 seconds to allow LinkedIn to process the uploaded image...")
             await asyncio.sleep(5)
+
+            # Make diagnostic GET request to see how LinkedIn's CDN processed the file
+            try:
+                async with httpx.AsyncClient() as client:
+                    status_resp = await client.get(f"https://api.linkedin.com/rest/images/{image_urn}", headers=rest_headers)
+                    print(f"\n[DEBUG IMAGE STATUS] {status_resp.status_code} | {status_resp.text}\n")
+            except Exception as diag_err:
+                print(f"\n[DEBUG IMAGE STATUS ERROR] Failed diagnostic GET request: {diag_err}\n")
             
             # ── STEP 7: Confirm image URN ──
             logger.info(f"[STEP 7] Image URN confirmed: {image_urn}")

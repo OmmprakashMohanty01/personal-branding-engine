@@ -134,9 +134,9 @@ STRICT RECIPE:
     hf_payload = {"inputs": prompt}
     
     fallback_urls = [
-        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev",
-        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3.5-large",
-        "https://router.huggingface.co/hf-inference/models/runwayml/stable-diffusion-v1-5"
+        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0", # The heavy hitter, very reliable
+        "https://api-inference.huggingface.co/models/prompthero/openjourney",                   # Great for highly stylized/vibrant images
+        "https://api-inference.huggingface.co/models/Lykon/dreamshaper-8"                       # Extremely fast, almost never goes down
     ]
 
     resp_content = None
