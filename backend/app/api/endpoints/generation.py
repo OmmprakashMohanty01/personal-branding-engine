@@ -133,10 +133,22 @@ STRICT RECIPE:
     for attempt in range(max_retries):
         start_time = time.perf_counter()
         try:
+            # Log the request details
+            logger.info(
+                "pollinations_request",
+                extra={
+                    "url": image_url,
+                    "prompt_length": len(prompt),
+                    "attempt": attempt + 1,
+                }
+            )
+            
             # 3. Fetch the image asynchronously with shortened timeouts
             limits = httpx.Timeout(20.0, connect=5.0)
             async with httpx.AsyncClient(timeout=limits) as client:
                 response = await client.get(image_url)
+                
+                duration = time.perf_counter() - start_time
                 
                 # Log successful HTTP status and metadata
                 logger.info(
@@ -146,6 +158,16 @@ STRICT RECIPE:
                         "content_type": response.headers.get("content-type"),
                         "content_length": len(response.content),
                         "attempt": attempt + 1,
+                    }
+                )
+                
+                # Log attempt details
+                logger.info(
+                    "pollinations_attempt",
+                    extra={
+                        "attempt": attempt + 1,
+                        "duration": duration,
+                        "status": response.status_code,
                     }
                 )
                 
