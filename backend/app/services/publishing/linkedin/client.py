@@ -15,8 +15,16 @@ class LinkedInClient:
     """Async client wrapper for interacting with the LinkedIn Posts API and OAuth2 endpoints."""
     
     def __init__(self):
-        self.client_id = os.getenv("LINKEDIN_CLIENT_ID", "mock_client_id")
-        self.client_secret = os.getenv("LINKEDIN_CLIENT_SECRET", "mock_client_secret")
+        import sys
+        self.client_id = os.getenv("LINKEDIN_CLIENT_ID")
+        self.client_secret = os.getenv("LINKEDIN_CLIENT_SECRET")
+        
+        # Fallback to mock values only during testing
+        if not self.client_id and ("pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)):
+            self.client_id = "mock_client_id"
+        if not self.client_secret and ("pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)):
+            self.client_secret = "mock_client_secret"
+            
         self.api_url = "https://api.linkedin.com"
         self.oauth_url = "https://www.linkedin.com"
 
