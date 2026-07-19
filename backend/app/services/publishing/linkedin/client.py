@@ -162,7 +162,7 @@ class LinkedInClient:
             logger.info(f"[LINKEDIN API] Response status: {init_resp.status_code} from {init_url}")
             if init_resp.status_code not in (200, 201):
                 logger.error(f"[STEP 3] initializeUpload FAILED ({init_resp.status_code}): {init_resp.text}")
-                print(f"[STEP 3] initializeUpload response body: {init_resp.text}")
+                logger.error(f"[STEP 3] initializeUpload response body: {init_resp.text}")
                 raise ValueError(
                     f"LinkedIn initializeUpload failed with status {init_resp.status_code}: {init_resp.text}"
                 )
@@ -191,27 +191,15 @@ class LinkedInClient:
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     put_resp = await client.put(upload_url, content=image_bytes, headers=put_headers)
-                    print(f"\n[DEBUG PUT UPLOAD] Status: {put_resp.status_code} | Body: {put_resp.text}\n")
+                    logger.info(f"[DEBUG PUT UPLOAD] Status: {put_resp.status_code} | Body: {put_resp.text}")
                     put_resp.raise_for_status()
             except httpx.HTTPStatusError as e:
                 logger.error(f"[STEP 5-6] PUT upload FAILED ({e.response.status_code}): {e.response.text}")
-                print(f"[STEP 5-6] PUT upload response body: {e.response.text}")
+                logger.error(f"[STEP 5-6] PUT upload response body: {e.response.text}")
                 raise e
             
             logger.info(f"[LINKEDIN API] Response status: {put_resp.status_code} from {upload_url[:120]}...")
             logger.info(f"[STEP 6] PUT upload succeeded with status {put_resp.status_code}")
-            
-            # Wait 5 seconds for LinkedIn's CDN/media pipeline to process the uploaded image
-            logger.info("Sleeping for 5 seconds to allow LinkedIn to process the uploaded image...")
-            await asyncio.sleep(5)
-
-            # Make diagnostic GET request to see how LinkedIn's CDN processed the file
-            try:
-                async with httpx.AsyncClient() as client:
-                    status_resp = await client.get(f"https://api.linkedin.com/rest/images/{image_urn}", headers=rest_headers)
-                    print(f"\n[DEBUG IMAGE STATUS] {status_resp.status_code} | {status_resp.text}\n")
-            except Exception as diag_err:
-                print(f"\n[DEBUG IMAGE STATUS ERROR] Failed diagnostic GET request: {diag_err}\n")
             
             # ── STEP 7: Confirm image URN ──
             logger.info(f"[STEP 7] Image URN confirmed: {image_urn}")
@@ -250,7 +238,7 @@ class LinkedInClient:
         logger.info(f"[STEP 9] POST {publish_url}")
         logger.info(f"[LINKEDIN API] Request URL: {publish_url} | Version: {rest_headers.get('LinkedIn-Version')}")
         
-        print(f"\n[DEBUG PAYLOAD TEXT LENGTH]: {len(text)} chars\n[DEBUG TEXT END]: {text[-50:]}\n")
+        logger.debug(f"[DEBUG PAYLOAD TEXT LENGTH]: {len(text)} chars | [DEBUG TEXT END]: {text[-50:]}")
         
         # Task 3: Inject Validation Assertions right before posting to publish
         post_text = text
@@ -264,7 +252,7 @@ class LinkedInClient:
         logger.info(f"[LINKEDIN API] Response status: {resp.status_code} from {publish_url}")
         if resp.status_code not in (200, 201):
             logger.error(f"[STEP 9] LinkedIn /rest/posts returned {resp.status_code}: {resp.text}")
-            print(f"[STEP 9] Full error response body: {resp.text}")
+            logger.error(f"[STEP 9] Full error response body: {resp.text}")
             raise httpx.HTTPStatusError(
                 f"LinkedIn /rest/posts returned {resp.status_code}.",
                 request=resp.request,
@@ -321,7 +309,7 @@ class LinkedInClient:
             return "urn:li:person:mock_person_urn"
         if resp.status_code != 200:
             logger.error(f"[LINKEDIN PROFILE] userinfo failed ({resp.status_code}): {resp.text}")
-            print(f"[LINKEDIN PROFILE] Full error response: {resp.text}")
+            logger.error(f"[LINKEDIN PROFILE] Full error response: {resp.text}")
         resp.raise_for_status()
         data = resp.json()
         # OpenID Connect 'sub' field is the canonical person identifier
