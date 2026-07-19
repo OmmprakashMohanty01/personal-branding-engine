@@ -133,12 +133,32 @@ STRICT RECIPE:
     for attempt in range(max_retries):
         start_time = time.perf_counter()
         try:
-            # 3. Fetch the image asynchronously 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            # 3. Fetch the image asynchronously with shortened timeouts
+            limits = httpx.Timeout(20.0, connect=5.0)
+            async with httpx.AsyncClient(timeout=limits) as client:
                 response = await client.get(image_url)
+                
+                # Log successful HTTP status and metadata
+                logger.info(
+                    "pollinations_response",
+                    extra={
+                        "status": response.status_code,
+                        "content_type": response.headers.get("content-type"),
+                        "content_length": len(response.content),
+                        "attempt": attempt + 1,
+                    }
+                )
                 
                 # If the API fails, this safely triggers the exception block below
                 response.raise_for_status() 
+                
+                # Validate content-type is an image
+                content_type = response.headers.get("content-type", "")
+                if not content_type.startswith("image/"):
+                    logger.error(
+                        f"Unexpected content type: {content_type}. Body: {response.text[:500]}"
+                    )
+                    raise ValueError(f"Unexpected content type: {content_type}")
                 
                 image_bytes = response.content
                 duration = time.perf_counter() - start_time
@@ -160,17 +180,21 @@ STRICT RECIPE:
                 encoded_img = base64.b64encode(image_bytes).decode("utf-8")
                 return f"data:image/jpeg;base64,{encoded_img}"
 
-        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+        except (httpx.TimeoutException, httpx.HTTPStatusError, ValueError) as e:
             duration = time.perf_counter() - start_time
             is_last_attempt = (attempt == max_retries - 1)
-            is_transient = isinstance(e, httpx.TimeoutException) or (
-                isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500
+            
+            # Treat ValueError (invalid content-type) and TimeoutException as transient/retryable
+            is_transient = (
+                isinstance(e, httpx.TimeoutException) 
+                or isinstance(e, ValueError)
+                or (isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500)
             )
             
             if is_last_attempt or not is_transient:
                 if isinstance(e, httpx.TimeoutException):
                     logger.error(
-                        "Image generation request timed out on final attempt.",
+                        "pollinations_timeout",
                         extra={
                             "event": "image_generation_timeout_fatal",
                             "provider": "Pollinations",
@@ -184,9 +208,25 @@ STRICT RECIPE:
                         status_code=504,
                         detail="Image generation request timed out. Please try again."
                     )
+                elif isinstance(e, ValueError):
+                    logger.error(
+                        "pollinations_invalid_content_type_fatal",
+                        extra={
+                            "event": "image_generation_content_type_fatal",
+                            "provider": "Pollinations",
+                            "duration_sec": duration,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "error": str(e)
+                        }
+                    )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Image generation failed: {str(e)}"
+                    )
                 else:
                     logger.error(
-                        f"Image generation API returned HTTP error on final/fatal attempt ({e.response.status_code}).",
+                        "pollinations_http_error",
                         extra={
                             "event": "image_generation_http_error_fatal",
                             "provider": "Pollinations",
@@ -194,7 +234,7 @@ STRICT RECIPE:
                             "status_code": e.response.status_code,
                             "attempt": attempt + 1,
                             "max_retries": max_retries,
-                            "response": e.response.text
+                            "body": e.response.text[:500]
                         }
                     )
                     status_code = 502 if e.response.status_code >= 500 else 400
