@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +8,8 @@ from app.database import get_db
 from app.models.integration import LinkedInAccount
 from app.services.publishing.linkedin.client import LinkedInClient
 from app.services.publishing.linkedin.crypto import encrypt_token
+
+logger = logging.getLogger("branding_engine.api.publishing")
 
 router = APIRouter(prefix="/publishing", tags=["Publishing"])
 linkedin_client = LinkedInClient()
@@ -61,6 +64,14 @@ async def connect_linkedin(
             account.refresh_expires_at = now + timedelta(days=365)
             
         await db.commit()
+        logger.info(
+            "LinkedIn sandbox account persisted",
+            extra={
+                "account_id": account.id,
+                "person_urn": account.linkedin_person_urn,
+                "created_at": str(account.created_at),
+            },
+        )
         return {
             "status": "connected",
             "linkedin_person_urn": urn,
@@ -114,6 +125,14 @@ async def connect_linkedin(
             account.expires_at = now + timedelta(seconds=expires_in)
             
         await db.commit()
+        logger.info(
+            "LinkedIn account persisted",
+            extra={
+                "account_id": account.id,
+                "person_urn": account.linkedin_person_urn,
+                "created_at": str(account.created_at),
+            },
+        )
         return {
             "status": "connected",
             "linkedin_person_urn": urn,

@@ -360,6 +360,8 @@ async def publish_draft_endpoint(
             print(f"Warning: Local image URL detected in real publish: {image_url}. External APIs cannot download this.")
 
         return draft
+    except HTTPException:
+        raise
     except ValueError as e:
         traceback.print_exc()
         raise HTTPException(status_code=422, detail=str(e))

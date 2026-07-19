@@ -24,6 +24,13 @@ class PublishingOrchestrator:
             raise ValueError(
                 "No connected LinkedIn integration account found. Please link your account first."
             )
+        logger.info(
+            "Publishing with LinkedIn account",
+            extra={
+                "account_id": account.id,
+                "person_urn": account.linkedin_person_urn,
+            },
+        )
         return account
 
     async def publish_draft(self, db: AsyncSession, draft_id: str) -> ContentDraft:
