@@ -3,7 +3,12 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Generator
 
-# Ensure backend/app/services is importable
+# Mock google and google.genai to prevent ModuleNotFoundError
+google_mock = MagicMock()
+genai_mock = MagicMock()
+google_mock.genai = genai_mock
+sys.modules['google'] = google_mock
+sys.modules['google.genai'] = genai_mock
 sys.path.insert(0, "/Users/ommprakashmohanty/personal-branding-engine/backend")
 
 from app.services.llm_provider import (

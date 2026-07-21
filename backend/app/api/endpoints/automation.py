@@ -31,8 +31,23 @@ async def generate_daily_draft(
     db: AsyncSession = Depends(get_db)
 ):
     """Secured endpoint to generate a daily draft based on the content strategy schedule."""
+    logger.info(
+        "Automation endpoint reached",
+        extra={
+            "client_ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        },
+    )
     # Verify API_CRON_SECRET or CRON_SECRET_KEY
     expected_secret = os.getenv("CRON_SECRET_KEY") or os.getenv("API_CRON_SECRET")
+    logger.info(
+        "CRON SECRET DEBUG",
+        extra={
+            "has_secret": expected_secret is not None,
+            "length": len(expected_secret) if expected_secret else 0,
+            "starts_with": expected_secret[:6] if expected_secret else None,
+        },
+    )
     if not expected_secret:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -52,7 +67,24 @@ async def generate_daily_draft(
         or request.query_params.get("cron_secret")
     )
     
+    logger.info(
+        "REQUEST SECRET",
+        extra={
+            "provided_length": len(provided_secret) if provided_secret else 0,
+            "provided_prefix": provided_secret[:6] if provided_secret else None,
+        },
+    )
+    
     if not provided_secret or provided_secret != expected_secret:
+        logger.warning(
+            "[DAILY AUTOMATION] Unauthorized access attempt - missing or invalid cron secret key.",
+            extra={
+                "client_ip": request.client.host if request.client else None,
+                "has_provided_secret": bool(provided_secret),
+                "provided_length": len(provided_secret) if provided_secret else 0,
+                "expected_length": len(expected_secret) if expected_secret else 0,
+            }
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized: Invalid Cron Secret Key."

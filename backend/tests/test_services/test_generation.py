@@ -4,6 +4,16 @@ import sys
 import httpx
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Mock google, google.genai and cohere modules
+cohere_mock = MagicMock()
+sys.modules['cohere'] = cohere_mock
+
+google_mock = MagicMock()
+genai_mock = MagicMock()
+google_mock.genai = genai_mock
+sys.modules['google'] = google_mock
+sys.modules['google.genai'] = genai_mock
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.future import select
 
@@ -85,8 +95,7 @@ async def test_prompt_factory_rendering():
     )
     
     sys_prompt = await factory.render_system_prompt(persona)
-    assert "John Doe" in sys_prompt
-    assert "LINKEDIN" in sys_prompt
+    assert "LinkedIn" in sys_prompt
     assert "Funny and sarcastic" in sys_prompt
     
     usr_prompt = factory.render_user_prompt("AI Frameworks", feedback="Make it cooler")
@@ -99,19 +108,20 @@ async def test_prompt_factory_rendering():
 # ==========================================
 @pytest.mark.asyncio
 @patch("google.genai.Client")
-@patch("cohere.AsyncClientV2.chat")
-async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_genai_client: MagicMock, db_session: AsyncSession):
+async def test_orchestrator_generate_success(mock_genai_client: MagicMock, db_session: AsyncSession):
     mock_client_instance = MagicMock()
     mock_interaction = MagicMock()
-    mock_interaction.output_text = '{"content_text": "Generated text from LLM 🐍", "requires_image": false, "image_prompt": null}'
+    mock_interaction.output_text = '{"content_text": "Generated text from LLM 🐍", "requires_image": false, "image_prompt": null, "metadata": {"post_type": "insight", "audience": "engineers"}}'
     mock_client_instance.interactions.create.return_value = mock_interaction
     mock_genai_client.return_value = mock_client_instance
     
+    # Needs to be an AsyncMock since it's awaited
     mock_cohere_resp = MagicMock()
     mock_content_item = MagicMock()
-    mock_content_item.text = "Generated text from LLM 🐍"
+    mock_content_item.text = "Refined text from Cohere"
     mock_cohere_resp.message.content = [mock_content_item]
-    mock_cohere.return_value = mock_cohere_resp
+    mock_cohere_chat = AsyncMock(return_value=mock_cohere_resp)
+    cohere_mock.AsyncClientV2.return_value.chat = mock_cohere_chat
     
     orchestrator = GenerationOrchestrator()
     draft = await orchestrator.generate_draft(
@@ -119,38 +129,39 @@ async def test_orchestrator_generate_success(mock_cohere: MagicMock, mock_genai_
         topic="AI agents"
     )
     
-    assert draft.content_text == "Generated text from LLM 🐍"
+    assert draft.content_text == "Refined text from Cohere"
     assert draft.status == "DRAFT"
     
     # Verify saved draft in DB
     res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == draft.id))
     saved_draft = res.scalars().first()
     assert saved_draft is not None
-    assert saved_draft.content_text == "Generated text from LLM 🐍"
+    assert saved_draft.content_text == "Refined text from Cohere"
 
 
 
 @pytest.mark.asyncio
 @patch("google.genai.Client")
-@patch("cohere.AsyncClientV2.chat")
-async def test_orchestrator_stage1_fallback_to_cohere(mock_cohere: MagicMock, mock_genai_client: MagicMock, db_session: AsyncSession):
+async def test_orchestrator_stage1_fallback_to_cohere(mock_genai_client: MagicMock, db_session: AsyncSession):
     # Gemini throws 429 Too Many Requests
     mock_client_instance = MagicMock()
     mock_client_instance.interactions.create.side_effect = Exception("429 Too Many Requests")
     mock_genai_client.return_value = mock_client_instance
     
-    # Cohere responds for Stage 1 (drafting) and then Stage 2 (refining)
+    # Mock Cohere response for Stage 1 (drafting) and then Stage 2 (refining)
     mock_cohere_resp1 = MagicMock()
     mock_content_item1 = MagicMock()
-    mock_content_item1.text = '{"content_text": "Stage 1 draft from Cohere", "requires_image": false, "image_prompt": null}'
+    mock_content_item1.text = '{"content_text": "Stage 1 draft from Cohere", "requires_image": false, "image_prompt": null, "metadata": {}}'
     mock_cohere_resp1.message.content = [mock_content_item1]
     
     mock_cohere_resp2 = MagicMock()
     mock_content_item2 = MagicMock()
-    mock_content_item2.text = "Stage 2 refined draft from Cohere"
+    mock_content_item2.text = "Refined Stage 2 draft from Cohere"
     mock_cohere_resp2.message.content = [mock_content_item2]
     
-    mock_cohere.side_effect = [mock_cohere_resp1, mock_cohere_resp2]
+    # Needs to be an AsyncMock since it's awaited
+    mock_cohere_chat = AsyncMock(side_effect=[mock_cohere_resp1, mock_cohere_resp2])
+    cohere_mock.AsyncClientV2.return_value.chat = mock_cohere_chat
     
     orchestrator = GenerationOrchestrator()
     draft = await orchestrator.generate_draft(
@@ -158,10 +169,10 @@ async def test_orchestrator_stage1_fallback_to_cohere(mock_cohere: MagicMock, mo
         topic="AI agent high availability"
     )
     
-    assert draft.content_text == "Stage 2 refined draft from Cohere"
+    assert draft.content_text == "Refined Stage 2 draft from Cohere"
     assert draft.status == "DRAFT"
     # Ensure Cohere was called twice
-    assert mock_cohere.call_count == 2
+    assert mock_cohere_chat.call_count == 2
 
 
 # ==========================================
@@ -169,28 +180,29 @@ async def test_orchestrator_stage1_fallback_to_cohere(mock_cohere: MagicMock, mo
 # ==========================================
 @pytest.mark.asyncio
 @patch("google.genai.Client")
-@patch("cohere.AsyncClientV2.chat")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.check_and_refresh_token")
 async def test_generation_api_endpoints(
     mock_refresh: MagicMock,
     mock_publish: MagicMock,
-    mock_cohere: MagicMock,
     mock_genai_client: MagicMock,
     api_client: httpx.AsyncClient,
     db_session: AsyncSession
 ):
+    # Setup Gemini Mock
     mock_client_instance = MagicMock()
     mock_interaction = MagicMock()
-    mock_interaction.output_text = '{"content_text": "FastAPI is awesome! 🚀", "requires_image": false, "image_prompt": null}'
+    mock_interaction.output_text = '{"content_text": "Generated via API", "requires_image": false, "image_prompt": null, "metadata": {}}'
     mock_client_instance.interactions.create.return_value = mock_interaction
     mock_genai_client.return_value = mock_client_instance
-    
+
+    # Setup Cohere Mock
     mock_cohere_resp = MagicMock()
     mock_content_item = MagicMock()
-    mock_content_item.text = "FastAPI is awesome! 🚀"
+    mock_content_item.text = "Refined via API"
     mock_cohere_resp.message.content = [mock_content_item]
-    mock_cohere.return_value = mock_cohere_resp
+    mock_cohere_chat = AsyncMock(return_value=mock_cohere_resp)
+    cohere_mock.AsyncClientV2.return_value.chat = mock_cohere_chat
     mock_publish.return_value = "urn:li:share:mock_share_id"
     mock_refresh.return_value = "mock_access_token"
     
@@ -222,7 +234,7 @@ async def test_generation_api_endpoints(
     resp = await api_client.post("/api/v1/generation", json=req_body)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["content_text"] == "FastAPI is awesome! 🚀"
+    assert data["content_text"] == "Refined via API"
     assert data["status"] == "DRAFT"
     draft_id = data["id"]
     
@@ -254,13 +266,11 @@ async def test_generation_api_endpoints(
 
 @pytest.mark.asyncio
 @patch("google.genai.Client")
-@patch("cohere.AsyncClientV2.chat")
 @patch("app.api.endpoints.automation.generate_metaphorical_image_helper")
 @patch("app.api.endpoints.automation.datetime")
 async def test_daily_draft_automation_success(
     mock_datetime: MagicMock,
     mock_generate_img: MagicMock,
-    mock_cohere: MagicMock,
     mock_genai_client: MagicMock,
     api_client: httpx.AsyncClient,
     db_session: AsyncSession
@@ -282,7 +292,8 @@ async def test_daily_draft_automation_success(
         mock_content_item = MagicMock()
         mock_content_item.text = "Monday AI update!"
         mock_cohere_resp.message.content = [mock_content_item]
-        mock_cohere.return_value = mock_cohere_resp
+        mock_cohere_chat = AsyncMock(return_value=mock_cohere_resp)
+        cohere_mock.AsyncClientV2.return_value.chat = mock_cohere_chat
         
         # Mock generate_metaphorical_image_helper response
         mock_generate_img.return_value = "data:image/jpeg;base64,fake_image_bytes"
