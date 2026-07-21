@@ -1,0 +1,97 @@
+name: Daily Brand Draft Automation
+
+on:
+  # Runs automatically at 02:37 UTC (08:07 AM IST) every day
+  # Randomized slightly to avoid GitHub Actions top-of-the-hour queue bottlenecks
+  schedule:
+    - cron: '37 2 * * *'
+  workflow_dispatch:
+
+# Ensures only one automation runs at a time, preventing duplicate LinkedIn posts
+concurrency:
+  group: daily-brand-draft
+  cancel-in-progress: false
+
+env:
+  # Centralized URL so it is easy to change if you ever add a custom domain
+  BASE_URL: https://personal-branding-engine.onrender.com
+
+jobs:
+  publish-draft:
+    runs-on: ubuntu-latest
+    # Hard stop after 15 minutes to prevent infinite billing/hanging if APIs freeze
+    timeout-minutes: 15
+
+    steps:
+      - name: Wake up Render Server
+        run: |
+          echo "Initiating wake-up sequence for $BASE_URL..."
+          MAX_RETRIES=15
+          WAIT_TIME=30
+          
+          for ((i=1; i<=MAX_RETRIES; i++)); do
+            # --max-time 10 prevents curl from hanging indefinitely on a dropped connection
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/api/v1/health/deep" || echo "000")
+            
+            if [ "$STATUS" -eq 200 ]; then
+              echo "✅ Server is fully awake and returned 200 OK!"
+              break
+            fi
+            
+            echo "⚠️ Server is sleeping/booting (Status: $STATUS). Retrying in $WAIT_TIME seconds... ($i/$MAX_RETRIES)"
+            sleep $WAIT_TIME
+            
+            if [ "$i" -eq $MAX_RETRIES ]; then
+              echo "❌ Error: Server failed to wake up after $((MAX_RETRIES * WAIT_TIME)) seconds."
+              exit 1
+            fi
+          done
+
+      - name: Trigger Daily Draft Automation
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          echo "Server is awake. Triggering automation endpoint..."
+          MAX_POST_RETRIES=3
+          POST_WAIT_TIME=15
+          
+          for ((i=1; i<=MAX_POST_RETRIES; i++)); do
+            echo "Attempt $i/$MAX_POST_RETRIES..."
+            
+            # --fail-with-body: Forces curl to return an error exit code for 4xx/5xx but still prints the body
+            # --connect-timeout 10: Fails quickly if Render drops the connection
+            # --max-time 120: Gives Pollinations/LinkedIn 2 full minutes to process before giving up
+            HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" \
+                 --fail-with-body \
+                 --connect-timeout 10 \
+                 --max-time 120 \
+                 -X POST "$BASE_URL/api/v1/automation/daily-draft" \
+                 -H "X-Cron-Secret: $CRON_SECRET" \
+                 -H "Content-Type: application/json" \
+                 -d '{}' || echo "000")
+            
+            echo "HTTP Status: $HTTP_STATUS"
+            echo "Response Body:"
+            cat response.json
+            echo "" # Adds a newline for readable logs
+            
+            # Check if the HTTP status is successful
+            if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 201 ]; then
+              
+              # Optional deep-inspection: If your FastAPI returns {"status": "failed"} even with a 200 OK, catch it.
+              if command -v jq >/dev/null 2>&1 && jq -e '.status == "failed"' response.json >/dev/null; then
+                 echo "⚠️ HTTP 200 received, but JSON payload indicates a failure state. Retrying..."
+              else
+                 echo "✅ Daily automation completed successfully."
+                 exit 0
+              fi
+            fi
+            
+            if [ "$i" -eq $MAX_POST_RETRIES ]; then
+              echo "❌ Error: Automation failed after $MAX_POST_RETRIES attempts."
+              exit 1
+            fi
+            
+            echo "⚠️ Request failed or timed out. Retrying in $POST_WAIT_TIME seconds..."
+            sleep $POST_WAIT_TIME
+          done
