@@ -28,6 +28,9 @@ from app.services.generation.prompt_templates import (
     OUTPUT_SCHEMA_TEMPLATE,
     COHERE_REFINEMENT_TEMPLATE,
     USER_TEMPLATE,
+    CLAIM_CATEGORIES_TEMPLATE,
+    GITHUB_LINK_RULES_TEMPLATE,
+    GROUNDING_CONTRACT_TEMPLATE,
 )
 from app.services.generation.writing_dna import WritingDNA, WritingDNAEngine, ContentStrategy
 from app.services.generation.author_knowledge import AuthorKnowledgeService, AuthorContext
@@ -131,6 +134,15 @@ class PromptBuilder:
         if not memory_context.is_empty:
             memory_rendered = Template(MEMORY_TEMPLATE).render(memory=memory_context)
             sections.append(memory_rendered)
+            
+        # CLAIM CATEGORIES
+        sections.append(CLAIM_CATEGORIES_TEMPLATE)
+        
+        # GITHUB LINK RULES
+        sections.append(GITHUB_LINK_RULES_TEMPLATE)
+        
+        # GROUNDING CONTRACT
+        sections.append(GROUNDING_CONTRACT_TEMPLATE)
 
         # IMAGE RULES
         sections.append(IMAGE_RULES_TEMPLATE)

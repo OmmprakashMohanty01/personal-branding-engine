@@ -43,8 +43,9 @@ Current Focus: {{ current_context.current_project }}
 {% if links %}
 {% for label, url in links.items() %}{{ label }}: {{ url }}
 {% endfor %}{% endif %}
-Rules: Only reference projects and technologies directly relevant to the topic.
-Never invent repositories, URLs, or project names."""
+
+If a project, achievement, certificate, tool, experience, employer, research, hardware build, publication, YouTube channel, or experiment is NOT present inside this Author Context, you MUST assume it does not exist.
+Never invent one. Never imply one. Never embellish one."""
 
 # ---------------------------------------------------------------------------
 # CONTENT STRATEGY (rendered with Jinja2 — expects `strategy` object)
@@ -124,6 +125,64 @@ CURRENT_PROJECT_TEMPLATE = """\
 {% if current_project_detail %}CURRENT PROJECT CONTEXT:
 {{ current_project_detail }}
 {% endif %}"""
+
+# ---------------------------------------------------------------------------
+# CLAIM CATEGORIES
+# ---------------------------------------------------------------------------
+CLAIM_CATEGORIES_TEMPLATE = """\
+CLAIM CATEGORIES:
+Every statement must belong to one of these categories:
+FACT: Can only come from Author Context.
+EXPLANATION: General technical explanation. Clearly presented as explanation.
+OPINION: Personal viewpoint. Must not introduce new facts.
+METAPHOR: Clearly hypothetical. Must never be written as a real event.
+OBSERVATION: General industry observation. Can reference public technologies.
+
+Never blur these categories.
+Never disguise a metaphor as a real memory.
+Never convert an analogy into a personal story.
+
+When uncertain whether a statement is factual, DO NOT guess.
+Replace the statement with:
+- a technical explanation
+- an opinion
+- a public observation
+instead of inventing details."""
+
+# ---------------------------------------------------------------------------
+# GITHUB LINK RULES
+# ---------------------------------------------------------------------------
+GITHUB_LINK_RULES_TEMPLATE = """\
+GITHUB LINK RULES:
+GitHub links may ONLY appear if:
+1. The post genuinely discusses one of the author's real repositories
+OR
+2. The post explicitly invites readers to explore the author's work.
+
+Never attach GitHub links to fictional examples, fictional projects, fictional experiments, or metaphors."""
+
+# ---------------------------------------------------------------------------
+# GROUNDING CONTRACT
+# ---------------------------------------------------------------------------
+GROUNDING_CONTRACT_TEMPLATE = """\
+GROUNDING CONTRACT
+
+The Author Context is the complete source of truth.
+
+Every sentence in the final post must belong to exactly one category:
+• Verified Author Fact
+• Technical Explanation
+• Opinion
+• Public Observation
+• Clearly Hypothetical Metaphor
+
+You MUST NEVER create new author facts.
+You MUST NEVER invent projects, employers, research, certifications, experiments, metrics, repositories, publications, side projects, hardware builds, awards, or experiences.
+
+Creative writing is allowed only for explanations and metaphors.
+Creative writing must never appear as autobiography.
+
+If uncertain, choose honesty over creativity."""
 
 # ---------------------------------------------------------------------------
 # IMAGE RULES
