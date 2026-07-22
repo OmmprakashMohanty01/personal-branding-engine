@@ -1,7 +1,6 @@
 import httpx
 import urllib.parse
 import asyncio
-import requests
 import uuid
 import os
 import json
@@ -20,24 +19,6 @@ from app.services.publishing.orchestrator import PublishingOrchestrator
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
 logger = logging.getLogger("branding_engine.api.generation")
-DEBUG_LOG_PATH = "/Users/ommprakashmohanty/personal-branding-engine/.cursor/debug-5139fb.log"
-
-
-def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
-    # #region agent log
-    try:
-        with open(DEBUG_LOG_PATH, "a") as f:
-            f.write(json.dumps({
-                "sessionId": "5139fb",
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": int(time.time() * 1000),
-                "hypothesisId": hypothesis_id,
-                "runId": "pre-fix",
-            }) + "\n")
-    except Exception:
-        pass
     # #endregion
 gen_orchestrator = GenerationOrchestrator()
 pub_orchestrator = PublishingOrchestrator()
@@ -71,14 +52,7 @@ async def get_live_news():
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
     """Helper function to generate a base64 encoded metaphorical illustration image."""
-    # #region agent log
-    _debug_log(
-        "generation.py:generate_metaphorical_image_helper",
-        "Helper function invoked",
-        {"topic": topic, "draft_text_len": len(draft_text) if draft_text else 0},
-        "A",
-    )
-    # #endregion
+    logger.debug(f"generate_metaphorical_image_helper invoked for topic: {topic}")
     # Asynchronously call the FallbackLLMProvider to write the metaphorical image prompt dynamically
     system_prompt = """
 You are a brilliant graphic designer creating thumbnails for a tech blog. 
@@ -100,10 +74,13 @@ STRICT RECIPE:
         gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
         client = genai.Client(api_key=gemini_key)
         
-        interaction = client.interactions.create(
-            model="gemini-3.5-flash",
-            input=stage_1_prompt
-        )
+        import asyncio
+        def _sync_call():
+            return client.interactions.create(
+                model="gemini-3.5-flash",
+                input=stage_1_prompt
+            )
+        interaction = await asyncio.to_thread(_sync_call)
         prompt = interaction.output_text.strip().replace('"', "'")
     except Exception as gemini_err:
         logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
@@ -303,18 +280,7 @@ async def generate_image_endpoint(
     request: Request
 ):
     """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
-    # #region agent log
-    _debug_log(
-        "generation.py:generate_image_endpoint",
-        "Endpoint handler invoked",
-        {
-            "topic": payload.topic,
-            "draft_text_len": len(payload.draft_text) if payload.draft_text else 0,
-            "content_type": request.headers.get("content-type"),
-        },
-        "A",
-    )
-    # #endregion
+    logger.debug(f"generate_image_endpoint invoked for topic: {payload.topic}")
     try:
         topic = payload.topic or "technology branding"
         draft_text = payload.draft_text or ""

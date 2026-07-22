@@ -88,10 +88,13 @@ class GeminiProvider(BaseLLMProvider):
         logger.info(f"Sending request to Gemini using model {self.model_name}")
         
         stage_1_prompt = f"{system_instruction}\n\nUser Input/Topic: {prompt}" if system_instruction else prompt
-        interaction = self.client.interactions.create(
-            model=self.model_name,
-            input=stage_1_prompt
-        )
+        import asyncio
+        def _sync_call():
+            return self.client.interactions.create(
+                model=self.model_name,
+                input=stage_1_prompt
+            )
+        interaction = await asyncio.to_thread(_sync_call)
         return interaction.output_text
 
 

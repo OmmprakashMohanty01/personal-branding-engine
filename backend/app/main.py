@@ -1,5 +1,6 @@
 import json
 import time
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -11,57 +12,16 @@ from app.api.endpoints.health import router as health_router
 from app.api.endpoints.automation import router as automation_router
 from app.config import settings
 
+logger = logging.getLogger("branding_engine.main")
+
 app = FastAPI(
     title="Personal Branding Engine API",
     description="Minimal REST API backend and orchestration engine automating LinkedIn content generation and publishing.",
     version="1.0"
 )
-
-DEBUG_LOG_PATH = "/Users/ommprakashmohanty/personal-branding-engine/.cursor/debug-5139fb.log"
-
-
-def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
-    # #region agent log
-    try:
-        with open(DEBUG_LOG_PATH, "a") as f:
-            f.write(json.dumps({
-                "sessionId": "5139fb",
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": int(time.time() * 1000),
-                "hypothesisId": hypothesis_id,
-                "runId": "pre-fix",
-            }) + "\n")
-    except Exception:
-        pass
-    # #endregion
-
-
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # #region agent log
-    body_preview = None
-    if request.url.path.endswith("/generate-image"):
-        try:
-            body_bytes = await request.body()
-            body_preview = body_bytes.decode("utf-8")[:500]
-        except Exception as e:
-            body_preview = f"<read error: {e}>"
-    _debug_log(
-        "main.py:validation_exception_handler",
-        "Request validation failed",
-        {
-            "path": request.url.path,
-            "method": request.method,
-            "query_params": dict(request.query_params),
-            "content_type": request.headers.get("content-type"),
-            "body_preview": body_preview,
-            "errors": exc.errors(),
-        },
-        "A,B,C,D,E",
-    )
-    # #endregion
+    logger.debug(f"Request validation failed for {request.url.path}: {exc.errors()}")
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 # CORS Configuration
