@@ -147,13 +147,17 @@ class GenerationOrchestrator:
             gemini_duration = time.time() - gemini_start
             logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
         except Exception as e:
-            logger.warning(f"[STAGE 1 FALLBACK] Gemini rate limited, falling back to Cohere for drafting: {e}")
+            error_str = str(e).lower()
+            if "high demand" in error_str or "capacity" in error_str:
+                logger.warning(f"[STAGE 1 FALLBACK] Gemini capacity error (Google side), falling back to Cohere: {e}")
+            else:
+                logger.warning(f"[STAGE 1 FALLBACK] Gemini rate limited (Quota), falling back to Cohere: {e}")
             try:
                 import cohere
                 cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
                 co = cohere.AsyncClientV2(api_key=cohere_key)
                 response = await co.chat(
-                    model="command-r",
+                    model="command-a-plus-05-2026",
                     messages=[{"role": "user", "content": stage_1_prompt}]
                 )
                 stage1_raw = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "") if (response.message and response.message.content) else ""
@@ -248,7 +252,7 @@ class GenerationOrchestrator:
 
             # Pass temperature and top_p to Cohere when supported
             cohere_kwargs = {
-                "model": "command-r",
+                "model": "command-a-plus-05-2026",
                 "messages": [
                     {"role": "system", "content": cohere_system_prompt},
                     {"role": "user", "content": generated_text}

@@ -92,13 +92,17 @@ STRICT RECIPE:
                 else:
                     raise e
     except Exception as gemini_err:
-        logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
+        error_str = str(gemini_err).lower()
+        if "high demand" in error_str or "capacity" in error_str:
+            logger.warning(f"[IMAGE GEN FALLBACK] Gemini capacity error (Google side), using Cohere for image prompt generation: {gemini_err}")
+        else:
+            logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited (Quota), using Cohere for image prompt generation: {gemini_err}")
         try:
             import cohere
             cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
             co = cohere.AsyncClientV2(api_key=cohere_key)
             response = await co.chat(
-                model="command-r",
+                model="command-a-plus-05-2026",
                 messages=[{"role": "user", "content": stage_1_prompt}]
             )
             prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")

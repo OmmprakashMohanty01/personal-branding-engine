@@ -161,7 +161,11 @@ class ContentGenerationPipeline:
             logger.info(f"[STAGE 1 - Gemini] Generated raw draft in {context.telemetry.provider_latency_ms}ms")
 
         except Exception as exc:
-            logger.warning(f"[STAGE 1 FALLBACK] Gemini primary error: {exc}. Attempting Cohere fallback.")
+            error_str = str(exc).lower()
+            if "high demand" in error_str or "capacity" in error_str:
+                logger.warning(f"[STAGE 1 FALLBACK] Gemini capacity error: {exc}. Attempting Cohere fallback.")
+            else:
+                logger.warning(f"[STAGE 1 FALLBACK] Gemini primary error: {exc}. Attempting Cohere fallback.")
             context.telemetry.fallback_provider_used = "cohere"
             try:
                 import cohere
@@ -170,7 +174,7 @@ class ContentGenerationPipeline:
                     cohere_key = self.cohere_api_key or "mock_cohere_key"
                     co = cohere.AsyncClientV2(api_key=cohere_key)
                     return await co.chat(
-                        model="command-r",
+                        model="command-a-plus-05-2026",
                         messages=[{"role": "user", "content": stage_1_prompt}],
                     )
                 
@@ -215,7 +219,7 @@ class ContentGenerationPipeline:
                 cohere_system = self.prompt_builder.build_cohere_prompt()
 
                 return await co.chat(
-                    model="command-r",
+                    model="command-a-plus-05-2026",
                     messages=[
                         {"role": "system", "content": cohere_system},
                         {"role": "user", "content": generated_text},
