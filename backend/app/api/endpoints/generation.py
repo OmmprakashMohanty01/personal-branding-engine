@@ -80,17 +80,14 @@ STRICT RECIPE:
                 model="gemini-3.5-flash",
                 input=stage_1_prompt
             )
-        for attempt in range(3):
-            try:
-                interaction = await asyncio.to_thread(_sync_call)
-                prompt = interaction.output_text.strip().replace('"', "'")
-                break
-            except Exception as e:
-                if attempt < 2:
-                    logger.warning(f"Gemini image prompt attempt {attempt + 1} failed: {e}. Retrying...")
-                    await asyncio.sleep(2 ** attempt)
-                else:
-                    raise e
+        try:
+            interaction = await asyncio.to_thread(_sync_call)
+            prompt = interaction.output_text.strip().replace('"', "'")
+        except Exception as e:
+            error_str = str(e).lower()
+            if "429" in error_str or "quota" in error_str or "high demand" in error_str or "capacity" in error_str:
+                raise e
+            raise
     except Exception as gemini_err:
         error_str = str(gemini_err).lower()
         if "high demand" in error_str or "capacity" in error_str:
@@ -102,7 +99,7 @@ STRICT RECIPE:
             cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
             co = cohere.AsyncClientV2(api_key=cohere_key)
             response = await co.chat(
-                model="command-a-plus-05-2026",
+                model="command-a",
                 messages=[{"role": "user", "content": stage_1_prompt}]
             )
             prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")

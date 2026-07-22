@@ -174,7 +174,7 @@ class ContentGenerationPipeline:
                     cohere_key = self.cohere_api_key or "mock_cohere_key"
                     co = cohere.AsyncClientV2(api_key=cohere_key)
                     return await co.chat(
-                        model="command-a-plus-05-2026",
+                        model="command-a",
                         messages=[{"role": "user", "content": stage_1_prompt}],
                     )
                 
@@ -219,7 +219,7 @@ class ContentGenerationPipeline:
                 cohere_system = self.prompt_builder.build_cohere_prompt()
 
                 return await co.chat(
-                    model="command-a-plus-05-2026",
+                    model="command-a",
                     messages=[
                         {"role": "system", "content": cohere_system},
                         {"role": "user", "content": generated_text},

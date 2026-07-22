@@ -133,17 +133,14 @@ class GenerationOrchestrator:
                     model="gemini-3.5-flash",
                     input=stage_1_prompt
                 )
-            for attempt in range(3):
-                try:
-                    interaction = await asyncio.to_thread(_sync_call)
-                    stage1_raw = interaction.output_text
-                    break
-                except Exception as e:
-                    if attempt < 2:
-                        logger.warning(f"Gemini attempt {attempt + 1} failed: {e}. Retrying...")
-                        await asyncio.sleep(2 ** attempt)
-                    else:
-                        raise e
+            try:
+                interaction = await asyncio.to_thread(_sync_call)
+                stage1_raw = interaction.output_text
+            except Exception as e:
+                error_str = str(e).lower()
+                if "429" in error_str or "quota" in error_str or "high demand" in error_str or "capacity" in error_str:
+                    raise e
+                raise
             gemini_duration = time.time() - gemini_start
             logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
         except Exception as e:
@@ -157,7 +154,7 @@ class GenerationOrchestrator:
                 cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
                 co = cohere.AsyncClientV2(api_key=cohere_key)
                 response = await co.chat(
-                    model="command-a-plus-05-2026",
+                    model="command-a",
                     messages=[{"role": "user", "content": stage_1_prompt}]
                 )
                 stage1_raw = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "") if (response.message and response.message.content) else ""
@@ -252,7 +249,7 @@ class GenerationOrchestrator:
 
             # Pass temperature and top_p to Cohere when supported
             cohere_kwargs = {
-                "model": "command-a-plus-05-2026",
+                "model": "command-a",
                 "messages": [
                     {"role": "system", "content": cohere_system_prompt},
                     {"role": "user", "content": generated_text}
