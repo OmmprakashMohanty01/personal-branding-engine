@@ -170,7 +170,7 @@ class ContentGenerationPipeline:
                     cohere_key = self.cohere_api_key or "mock_cohere_key"
                     co = cohere.AsyncClientV2(api_key=cohere_key)
                     return await co.chat(
-                        model="command-r-plus",
+                        model="command-r",
                         messages=[{"role": "user", "content": stage_1_prompt}],
                     )
                 
@@ -186,7 +186,11 @@ class ContentGenerationPipeline:
                 ) if (resp.message and resp.message.content) else ""
             except Exception as cohere_err:
                 logger.error(f"Stage 1 Cohere fallback also failed: {cohere_err}")
-                raise exc
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=503,
+                    detail="All AI providers are temporarily unavailable. Please try again later."
+                )
 
         # 4. JSON Repair Stage
         parsed_data, was_repaired = self.json_repair_stage.repair(stage1_raw)
@@ -211,7 +215,7 @@ class ContentGenerationPipeline:
                 cohere_system = self.prompt_builder.build_cohere_prompt()
 
                 return await co.chat(
-                    model="command-r-plus",
+                    model="command-r",
                     messages=[
                         {"role": "system", "content": cohere_system},
                         {"role": "user", "content": generated_text},

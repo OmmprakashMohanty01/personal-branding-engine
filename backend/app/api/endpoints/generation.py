@@ -80,8 +80,17 @@ STRICT RECIPE:
                 model="gemini-3.5-flash",
                 input=stage_1_prompt
             )
-        interaction = await asyncio.to_thread(_sync_call)
-        prompt = interaction.output_text.strip().replace('"', "'")
+        for attempt in range(3):
+            try:
+                interaction = await asyncio.to_thread(_sync_call)
+                prompt = interaction.output_text.strip().replace('"', "'")
+                break
+            except Exception as e:
+                if attempt < 2:
+                    logger.warning(f"Gemini image prompt attempt {attempt + 1} failed: {e}. Retrying...")
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    raise e
     except Exception as gemini_err:
         logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited, using Cohere for image prompt generation: {gemini_err}")
         try:
@@ -89,7 +98,7 @@ STRICT RECIPE:
             cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
             co = cohere.AsyncClientV2(api_key=cohere_key)
             response = await co.chat(
-                model="command-r-plus",
+                model="command-r",
                 messages=[{"role": "user", "content": stage_1_prompt}]
             )
             prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
@@ -315,6 +324,8 @@ async def generate_content(
         return draft
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
