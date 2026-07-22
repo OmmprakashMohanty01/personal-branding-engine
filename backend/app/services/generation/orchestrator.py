@@ -126,10 +126,13 @@ class GenerationOrchestrator:
             client = genai.Client(api_key=gemini_key)
             stage_1_prompt = f"{system_prompt_gemini}\n\nUser Input/Topic: {user_prompt}"
 
-            interaction = client.interactions.create(
-                model="gemini-3.5-flash",
-                input=stage_1_prompt
-            )
+            import asyncio
+            def _sync_call():
+                return client.interactions.create(
+                    model="gemini-3.5-flash",
+                    input=stage_1_prompt
+                )
+            interaction = await asyncio.to_thread(_sync_call)
             stage1_raw = interaction.output_text
             gemini_duration = time.time() - gemini_start
             logger.info(f"[STAGE 1 COMPLETE - Gemini] Draft generated in {gemini_duration:.2f}s")
@@ -140,7 +143,7 @@ class GenerationOrchestrator:
                 cohere_key = self.cohere_api_key or os.getenv("COHERE_API_KEY") or "mock_cohere_key"
                 co = cohere.AsyncClientV2(api_key=cohere_key)
                 response = await co.chat(
-                    model="command-a-plus-05-2026",
+                    model="command-r-plus",
                     messages=[{"role": "user", "content": stage_1_prompt}]
                 )
                 stage1_raw = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "") if (response.message and response.message.content) else ""
@@ -232,7 +235,7 @@ class GenerationOrchestrator:
 
             # Pass temperature and top_p to Cohere when supported
             cohere_kwargs = {
-                "model": "command-a-plus-05-2026",
+                "model": "command-r-plus",
                 "messages": [
                     {"role": "system", "content": cohere_system_prompt},
                     {"role": "user", "content": generated_text}

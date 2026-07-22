@@ -89,7 +89,7 @@ STRICT RECIPE:
             cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
             co = cohere.AsyncClientV2(api_key=cohere_key)
             response = await co.chat(
-                model="command-a-plus-05-2026",
+                model="command-r-plus",
                 messages=[{"role": "user", "content": stage_1_prompt}]
             )
             prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
