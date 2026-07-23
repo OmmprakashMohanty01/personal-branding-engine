@@ -65,7 +65,7 @@ jobs:
                  --fail-with-body \
                  --connect-timeout 10 \
                  --max-time 120 \
-                 -X POST "$BASE_URL/api/v1/automation/daily-draft" \
+                 -X POST "$BASE_URL/api/v1/automation/daily" \
                  -H "X-Cron-Secret: $CRON_SECRET" \
                  -H "Content-Type: application/json" \
                  -d '{}' || echo "000")
@@ -85,6 +85,9 @@ jobs:
                  echo "✅ Daily automation completed successfully."
                  exit 0
               fi
+            elif [ "$HTTP_STATUS" -eq 429 ]; then
+              echo "✅ HTTP 429 received (Another process is holding the lock). Exiting successfully."
+              exit 0
             fi
             
             if [ "$i" -eq $MAX_POST_RETRIES ]; then
