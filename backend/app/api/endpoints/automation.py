@@ -25,7 +25,6 @@ from app.database import get_db
 from app.models.content import ContentDraft
 from app.schemas.generation import DraftResponse
 from app.services.generation.context import PipelineContext
-from app.services.generation.orchestrator import GenerationOrchestrator
 from app.services.generation.pipeline import ContentGenerationPipeline
 from app.services.publishing.orchestrator import PublishingOrchestrator
 
@@ -171,54 +170,6 @@ async def generate_daily(
         logger.error(f"[DAILY AUTOMATION ERROR] Failed daily generation: {e}")
         # Explicitly rollback the transaction if an error occurs to maintain atomicity
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Daily automation draft generation failed: {str(e)}",
-        )
-
-
-@router.post("/daily-draft", response_model=DraftResponse)
-async def generate_daily_draft(
-    request: Request,
-    cron_secret_key: Optional[str] = Query(None, alias="cron_secret_key"),
-    x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Backward-compatible endpoint for legacy GitHub Actions daily draft workflow."""
-    verify_cron_secret(request, cron_secret_key, x_cron_secret)
-
-    weekday = datetime.datetime.today().weekday()
-    if weekday == 6:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={"detail": "Sunday: Rest day, no post generated today."},
-        )
-
-    topic = DAILY_SCHEDULE.get(weekday)
-    if not topic:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No prompt mapped for today's weekday.",
-        )
-
-    try:
-        orchestrator = GenerationOrchestrator()
-        draft = await orchestrator.generate_draft(db=db, topic=topic, persona_id=None)
-
-        try:
-            image_url = await generate_metaphorical_image_helper(topic, draft.content_text)
-            metadata = dict(draft.llm_metadata or {})
-            metadata["image_url"] = image_url
-            draft.llm_metadata = metadata
-
-            await db.commit()
-            await db.refresh(draft)
-        except Exception as img_err:
-            logger.error(f"[DAILY AUTOMATION] Image generation failed: {img_err}")
-
-        return draft
-    except Exception as e:
-        logger.error(f"[DAILY AUTOMATION ERROR] Failed daily generation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Daily automation draft generation failed: {str(e)}",

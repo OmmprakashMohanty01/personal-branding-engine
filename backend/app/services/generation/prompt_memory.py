@@ -25,10 +25,11 @@ class MemoryContext:
     recent_hooks: List[str] = field(default_factory=list)
     recent_endings: List[str] = field(default_factory=list)
     recent_topics: List[str] = field(default_factory=list)
+    recent_drafts: List[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        return not self.recent_hooks and not self.recent_endings and not self.recent_topics
+        return not self.recent_hooks and not self.recent_endings and not self.recent_topics and not self.recent_drafts
 
 
 class PromptMemoryService:
@@ -72,6 +73,7 @@ class PromptMemoryService:
             recent_hooks: List[str] = []
             recent_endings: List[str] = []
             recent_topics: List[str] = []
+            recent_drafts: List[str] = []
 
             for draft in drafts:
                 text = draft.content_text or ""
@@ -96,10 +98,14 @@ class PromptMemoryService:
                 if "hook_strategy" in metadata:
                     recent_hooks.append(metadata["hook_strategy"])
 
+                if text:
+                    recent_drafts.append(text)
+
             context = MemoryContext(
                 recent_hooks=recent_hooks,
                 recent_endings=recent_endings,
                 recent_topics=recent_topics,
+                recent_drafts=recent_drafts,
             )
 
             logger.info(

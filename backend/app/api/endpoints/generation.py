@@ -14,13 +14,14 @@ from sqlalchemy.future import select
 from app.database import get_db
 from app.models.content import ContentDraft
 from app.schemas.generation import GenerateRequest, DraftUpdatePayload, DraftResponse, ImageGenerateRequest
-from app.services.generation.orchestrator import GenerationOrchestrator
+from app.services.generation.pipeline import ContentGenerationPipeline
+from app.services.generation.context import PipelineContext
 from app.services.publishing.orchestrator import PublishingOrchestrator
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
 logger = logging.getLogger("branding_engine.api.generation")
     # #endregion
-gen_orchestrator = GenerationOrchestrator()
+gen_pipeline = ContentGenerationPipeline()
 pub_orchestrator = PublishingOrchestrator()
 
 @router.get("/live-news", response_model=List[str])
@@ -312,12 +313,15 @@ async def generate_content(
 ):
     """Generate a LinkedIn post draft using Gemini and Cohere."""
     try:
-        orchestrator = GenerationOrchestrator()
-        draft = await orchestrator.generate_draft(
-            db=db,
+        pipeline = ContentGenerationPipeline()
+        import time
+        context = PipelineContext(
             topic=payload.topic,
-            persona_id=payload.persona_id
+            db=db,
+            persona_id=payload.persona_id,
+            trace_id=f"manual_{int(time.time())}"
         )
+        draft = await pipeline.run(context)
         if draft.llm_metadata:
             metadata = dict(draft.llm_metadata)
             metadata["model"] = "gemini-3.5-flash & cohere"

@@ -120,11 +120,11 @@ class ContentDeduplicationStage:
         max_sim = 0.0
         match_snippet = None
 
-        for draft in memory_context.recent_drafts:
-            sim = self.jaccard_similarity(new_text, draft.content_text)
+        for draft_text in memory_context.recent_drafts:
+            sim = self.jaccard_similarity(new_text, draft_text)
             if sim > max_sim:
                 max_sim = sim
-                match_snippet = draft.content_text[:100]
+                match_snippet = draft_text[:100]
 
         is_duplicate = max_sim >= similarity_threshold
         if is_duplicate:

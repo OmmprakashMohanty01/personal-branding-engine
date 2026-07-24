@@ -133,14 +133,14 @@ def is_retriable_error(exc: Exception) -> bool:
     # Explicit HTTP status checks in exception message or attributes
     status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     if status_code is not None:
-        if status_code in (429, 500, 502, 503, 504):
+        if status_code in (500, 502, 503, 504):
             return True
-        if status_code in (400, 401, 403, 404):
+        if status_code in (400, 401, 403, 404, 429):
             return False
 
     # Check for rate limit or server error keywords in exception string
     retriable_keywords = [
-        "429", "rate limit", "quota", "500", "502", "503", "504",
+        "500", "502", "503", "504",
         "timeout", "timed out", "connection error", "connection refused",
         "server error", "temporarily unavailable"
     ]
@@ -149,7 +149,7 @@ def is_retriable_error(exc: Exception) -> bool:
 
     # Non-retriable auth or bad request keywords
     non_retriable_keywords = [
-        "400", "401", "403", "404", "unauthorized", "forbidden",
+        "400", "401", "403", "404", "429", "rate limit", "quota", "unauthorized", "forbidden",
         "invalid api key", "bad request", "validationerror"
     ]
     if any(keyword in exc_str for keyword in non_retriable_keywords):

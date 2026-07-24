@@ -17,27 +17,27 @@ class ImageRulesEngine:
     """Provides strict image prompt constraints for the generation pipeline."""
 
     PREFERRED_STYLES = [
-        "cinematic photography",
-        "visual metaphors",
-        "environmental storytelling",
-        "dramatic lighting",
-        "macro photography",
-        "shallow depth of field",
-        "minimalist composition",
-        "one clear subject",
+        "editorial photography",
+        "professional technology branding",
+        "engineering diagrams",
+        "SaaS product visuals",
+        "developer workstations",
+        "cloud infrastructure",
+        "abstract architectural photography",
+        "clean data visualization",
+        "modern UI",
+        "technical illustrations",
     ]
 
     FORBIDDEN_ELEMENTS = [
-        "UI screenshots or code screenshots",
-        "dashboards or data visualizations",
-        "laptops, monitors, or device screens",
-        "floating robots or glowing blue brains",
-        "holograms or holographic displays",
-        "text, words, or typography of any kind",
-        "logos, brand marks, or watermarks",
-        "generic glowing orbs or data streams",
-        "multiple competing subjects",
-        "company or product logos",
+        "fantasy",
+        "animals",
+        "robots",
+        "steampunk",
+        "cyberpunk",
+        "glowing magic",
+        "cinematic movie posters",
+        "Instagram aesthetics",
     ]
 
     def get_rules(self) -> str:
