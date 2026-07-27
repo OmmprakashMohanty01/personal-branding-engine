@@ -11,6 +11,10 @@ from app.api.endpoints.publishing import router as publishing_router
 from app.api.endpoints.health import router as health_router
 from app.api.endpoints.automation import router as automation_router
 from app.config import settings
+from app.logging_config import setup_logging, TraceIdMiddleware
+
+# Initialize structured logging with correlation ID
+setup_logging()
 
 logger = logging.getLogger("branding_engine.main")
 
@@ -33,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add correlation ID middleware
+app.add_middleware(TraceIdMiddleware)
 
 from fastapi.staticfiles import StaticFiles
 import os

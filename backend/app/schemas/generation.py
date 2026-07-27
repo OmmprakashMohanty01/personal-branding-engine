@@ -17,6 +17,13 @@ class DraftUpdatePayload(BaseModel):
     content_text: str
     image_url: Optional[str] = None
 
+class VisualStrategyOutput(BaseModel):
+    """Output schema for the Visual Strategy Agent."""
+    primary_concept: str = Field(..., description="The main concept or idea from the article.")
+    secondary_concept: str = Field(..., description="A supporting concept or theme.")
+    mood: str = Field(..., description="The emotional tone or mood.")
+    visual_metaphor: str = Field(..., description="A visual metaphor representing the concepts.")
+    image_prompt: str = Field(..., description="The final cinematic image prompt for Pollinations AI.")
 
 class LLMGenerationOutput(BaseModel):
     """Internal model for parsing the expanded JSON output from Stage 1 LLM.
@@ -31,10 +38,6 @@ class LLMGenerationOutput(BaseModel):
     requires_image: bool = Field(
         False,
         description="Whether the post needs an accompanying image",
-    )
-    image_prompt: Optional[str] = Field(
-        None,
-        description="Cinematic image description for Pollinations AI",
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
@@ -51,3 +54,14 @@ class DraftResponse(BaseModel):
     llm_metadata: Dict[str, Any]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AutomationResponse(BaseModel):
+    """Strict schema for automation endpoint responses to ensure successful end-to-end execution."""
+    status: str
+    draft_id: str
+    linkedin_post_id: Optional[str] = None
+    character_count: int
+    image_uploaded: bool
+    trace_id: str
+

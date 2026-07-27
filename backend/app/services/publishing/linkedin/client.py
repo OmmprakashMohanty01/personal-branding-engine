@@ -97,7 +97,7 @@ class LinkedInClient:
                 )
             raise e
 
-    async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None) -> str:
+    async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None, idempotency_key: str | None = None) -> str:
         """Publish content to LinkedIn using the modern /rest/posts endpoint.
         
         Image upload uses /rest/images?action=initializeUpload (NOT legacy /v2/assets).
@@ -108,6 +108,7 @@ class LinkedInClient:
             account: The LinkedInAccount record to publish with.
             text: Post body content text.
             image_url: Optional base64 data URI or raw base64 string of the image to attach.
+            idempotency_key: Optional unique identifier to prevent duplicate posts on network retry.
             
         Returns:
             The created post URN string.
@@ -120,13 +121,15 @@ class LinkedInClient:
         
         access_token = await self.check_and_refresh_token(db, account)
         
-        # Standard headers for all /rest/ API calls
         rest_headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "X-Restli-Protocol-Version": "2.0.0",
             "LinkedIn-Version": "202606"
         }
+        if idempotency_key:
+            rest_headers["X-RestLi-Idempotency-Key"] = idempotency_key
+            rest_headers["LinkedIn-Idempotency-Key"] = idempotency_key
         
         image_urn = None
         image_bytes = None
@@ -247,7 +250,21 @@ class LinkedInClient:
             assert isinstance(image_bytes, bytes) and len(image_bytes) > 1000, "Image bytes are corrupted or empty"
             
         async with httpx.AsyncClient() as client:
-            resp = await client.post(publish_url, json=payload, headers=rest_headers)
+            try:
+                resp = await client.post(publish_url, json=payload, headers=rest_headers)
+            except (httpx.TimeoutException, httpx.ReadError, httpx.ConnectError) as e:
+                logger.warning(f"[STEP 9] Network timeout during publish: {e}. Attempting idempotency recovery...")
+                try:
+                    recent_posts = await self.fetch_recent_posts(db, account, limit=5)
+                    for post in recent_posts:
+                        if post.get("commentary") == text:
+                            post_id = post.get("id") or post.get("urn")
+                            logger.info(f"[IDEMPOTENCY RECOVERY] Found matching post {post_id}. Recovering successfully.")
+                            return post_id
+                    logger.error("[IDEMPOTENCY RECOVERY] No matching post found in recent posts. Re-raising error.")
+                except Exception as recovery_exc:
+                    logger.error(f"[IDEMPOTENCY RECOVERY] Failed to fetch recent posts for recovery: {recovery_exc}")
+                raise e
 
         logger.info(f"[LINKEDIN API] Response status: {resp.status_code} from {publish_url}")
         if resp.status_code not in (200, 201):
@@ -318,3 +335,26 @@ class LinkedInClient:
             logger.warning(f"[LINKEDIN PROFILE] 'sub' field missing from userinfo response, falling back to 'id'. Data: {data}")
             profile_id = data.get("id", "unknown")
         return f"urn:li:person:{profile_id}"
+
+    async def fetch_recent_posts(self, db: AsyncSession, account: LinkedInAccount, limit: int = 5) -> list[dict]:
+        """Fetch the most recent posts authored by this account."""
+        access_token = await self.check_and_refresh_token(db, account)
+        
+        url = f"{self.api_url}/rest/posts?q=author&author={account.linkedin_person_urn}&count={limit}&sortBy=LAST_MODIFIED"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "LinkedIn-Version": "202606"
+        }
+        
+        logger.info(f"[LINKEDIN API] Request URL: {url} | Version: {headers.get('LinkedIn-Version')}")
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers)
+            
+        if resp.status_code != 200:
+            if "mock" in access_token:
+                return []
+            logger.error(f"[LINKEDIN POSTS] fetch_recent_posts failed ({resp.status_code}): {resp.text}")
+            resp.raise_for_status()
+            
+        data = resp.json()
+        return data.get("elements", [])

@@ -54,9 +54,10 @@ jobs:
           echo "Server is awake. Triggering automation endpoint..."
           MAX_POST_RETRIES=3
           POST_WAIT_TIME=15
+          RUN_ID="$(date +%Y-%m-%d)-automation-${GITHUB_RUN_ID}"
           
           for ((i=1; i<=MAX_POST_RETRIES; i++)); do
-            echo "Attempt $i/$MAX_POST_RETRIES..."
+            echo "Attempt $i/$MAX_POST_RETRIES (Run ID: $RUN_ID)..."
             
             # --fail-with-body: Forces curl to return an error exit code for 4xx/5xx but still prints the body
             # --connect-timeout 10: Fails quickly if Render drops the connection
@@ -67,6 +68,7 @@ jobs:
                  --max-time 120 \
                  -X POST "$BASE_URL/api/v1/automation/daily" \
                  -H "X-Cron-Secret: $CRON_SECRET" \
+                 -H "X-Run-ID: $RUN_ID" \
                  -H "Content-Type: application/json" \
                  -d '{}' || echo "000")
             
@@ -78,10 +80,30 @@ jobs:
             # Check if the HTTP status is successful
             if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 201 ]; then
               
-              # Optional deep-inspection: If your FastAPI returns {"status": "failed"} even with a 200 OK, catch it.
-              if command -v jq >/dev/null 2>&1 && jq -e '.status == "failed"' response.json >/dev/null; then
-                 echo "⚠️ HTTP 200 received, but JSON payload indicates a failure state. Retrying..."
+              if command -v jq >/dev/null 2>&1; then
+                STATUS_VAL=$(jq -r '.status' response.json)
+                POST_ID=$(jq -r '.linkedin_post_id' response.json)
+                CHAR_COUNT=$(jq -r '.character_count' response.json)
+                
+                if [ "$STATUS_VAL" != "PUBLISHED" ] && [ "$STATUS_VAL" != "draft_created" ]; then
+                   echo "❌ Error: Backend returned 200 OK, but status is '$STATUS_VAL' (Expected PUBLISHED or draft_created)."
+                   exit 1
+                fi
+                
+                if [ "$STATUS_VAL" == "PUBLISHED" ] && [ "$POST_ID" == "null" ]; then
+                   echo "❌ Error: Post status is PUBLISHED but no linkedin_post_id is present in response."
+                   exit 1
+                fi
+                
+                if [ "$CHAR_COUNT" -eq 0 ] || [ "$CHAR_COUNT" == "null" ]; then
+                   echo "❌ Error: character_count is invalid or missing in response."
+                   exit 1
+                fi
+                
+                echo "✅ Daily automation completed successfully. Status: $STATUS_VAL, Chars: $CHAR_COUNT"
+                exit 0
               else
+                 echo "⚠️ jq not found, falling back to simple success check."
                  echo "✅ Daily automation completed successfully."
                  exit 0
               fi

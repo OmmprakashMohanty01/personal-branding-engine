@@ -7,7 +7,7 @@ import json
 import time
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -52,246 +52,40 @@ async def get_live_news():
         ]
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
-    """Helper function to generate a base64 encoded metaphorical illustration image."""
-    logger.debug(f"generate_metaphorical_image_helper invoked for topic: {topic}")
-    # Asynchronously call the FallbackLLMProvider to write the metaphorical image prompt dynamically
-    system_prompt = """
-You are a brilliant graphic designer creating thumbnails for a tech blog. 
-Read the provided text and write a single, highly detailed image generation prompt (maximum 50 words). 
-
-STRICT RECIPE:
-1. Identify the core real-world subject (e.g., Switzerland, Apple, a specific law).
-2. Identify the core technology (e.g., internet speed, geolocation, APIs).
-3. You MUST visually combine a symbol of the subject with a symbol of the technology in a surreal or striking way.
-4. Example: "A glowing fiber optic cable woven into the shape of the Swiss Alps, dark cinematic studio lighting, 8k resolution, macro photography."
-5. DO NOT use generic floating glowing dots or plain data streams. Make it specific to the text.
-"""
-    user_prompt = f"Topic: {topic}\n\nDraft Text: {draft_text}"
-    stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
+    """Generate a base64 encoded professional image using deterministic prompts.
     
-    print(f"Generating dynamic image prompt via LLM for topic: {topic}")
-    try:
-        from google import genai
-        gemini_key = os.getenv("GEMINI_API_KEY") or "mock_gemini_key"
-        client = genai.Client(api_key=gemini_key)
-        
-        import asyncio
-        def _sync_call():
-            return client.interactions.create(
-                model="gemini-3.5-flash",
-                input=stage_1_prompt
-            )
-        try:
-            interaction = await asyncio.to_thread(_sync_call)
-            prompt = interaction.output_text.strip().replace('"', "'")
-        except Exception as e:
-            error_str = str(e).lower()
-            if "429" in error_str or "quota" in error_str or "high demand" in error_str or "capacity" in error_str:
-                raise e
-            raise
-    except Exception as gemini_err:
-        error_str = str(gemini_err).lower()
-        if "high demand" in error_str or "capacity" in error_str:
-            logger.warning(f"[IMAGE GEN FALLBACK] Gemini capacity error (Google side), using Cohere for image prompt generation: {gemini_err}")
-        else:
-            logger.warning(f"[IMAGE GEN FALLBACK] Gemini rate limited (Quota), using Cohere for image prompt generation: {gemini_err}")
-        try:
-            import cohere
-            cohere_key = os.getenv("COHERE_API_KEY") or "mock_cohere_key"
-            co = cohere.AsyncClientV2(api_key=cohere_key)
-            response = await co.chat(
-                model="command-a",
-                messages=[{"role": "user", "content": stage_1_prompt}]
-            )
-            prompt = next((block.text for block in response.message.content if hasattr(block, "text") and block.text), "").strip().replace('"', "'")
-            if not prompt:
-                raise ValueError("Empty Cohere response")
-        except Exception as cohere_err:
-            print(f"[IMAGE GEN FALLBACK FAIL] Both Gemini and Cohere failed: {cohere_err}. Using default prompt.")
-            prompt = f"A high-quality, professional, cinematic illustration representing: {topic}"
-    print(f"Generated prompt: {prompt}")
+    Uses ImageRulesEngine for prompt construction (no LLM involved)
+    and PollinationsImageProvider for image fetching with circuit breaker resilience.
+    """
+    from app.services.generation.image_rules import ImageRulesEngine
+    from app.services.generation.providers import PollinationsImageProvider
 
-    # 1. URL-encode your LLM-generated prompt so it is safe for a web link
-    encoded_prompt = urllib.parse.quote(prompt)
-
-    # 2. Construct the keyless Pollinations URL
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
-
-    max_retries = 2
-    for attempt in range(max_retries):
-        start_time = time.perf_counter()
-        try:
-            # Log the request details
-            logger.info(
-                "pollinations_request",
-                extra={
-                    "url": image_url,
-                    "prompt_length": len(prompt),
-                    "attempt": attempt + 1,
-                }
-            )
-            
-            # 3. Fetch the image asynchronously with shortened timeouts
-            limits = httpx.Timeout(20.0, connect=5.0)
-            async with httpx.AsyncClient(timeout=limits) as client:
-                response = await client.get(image_url)
-                
-                duration = time.perf_counter() - start_time
-                
-                # Log successful HTTP status and metadata
-                logger.info(
-                    "pollinations_response",
-                    extra={
-                        "status": response.status_code,
-                        "content_type": response.headers.get("content-type"),
-                        "content_length": len(response.content),
-                        "attempt": attempt + 1,
-                    }
-                )
-                
-                # Log attempt details
-                logger.info(
-                    "pollinations_attempt",
-                    extra={
-                        "attempt": attempt + 1,
-                        "duration": duration,
-                        "status": response.status_code,
-                    }
-                )
-                
-                # If the API fails, this safely triggers the exception block below
-                response.raise_for_status() 
-                
-                # Validate content-type is an image
-                content_type = response.headers.get("content-type", "")
-                if not content_type.startswith("image/"):
-                    logger.error(
-                        f"Unexpected content type: {content_type}. Body: {response.text[:500]}"
-                    )
-                    raise ValueError(f"Unexpected content type: {content_type}")
-                
-                image_bytes = response.content
-                duration = time.perf_counter() - start_time
-                
-                logger.info(
-                    "Image generation succeeded.",
-                    extra={
-                        "event": "image_generation_success",
-                        "provider": "Pollinations",
-                        "duration_sec": duration,
-                        "prompt_length": len(prompt),
-                        "image_size_kb": len(image_bytes) / 1024,
-                        "attempt": attempt + 1,
-                        "max_retries": max_retries
-                    }
-                )
-                
-                import base64
-                encoded_img = base64.b64encode(image_bytes).decode("utf-8")
-                return f"data:image/jpeg;base64,{encoded_img}"
-
-        except (httpx.TimeoutException, httpx.HTTPStatusError, ValueError) as e:
-            duration = time.perf_counter() - start_time
-            is_last_attempt = (attempt == max_retries - 1)
-            
-            # Treat ValueError (invalid content-type) and TimeoutException as transient/retryable
-            is_transient = (
-                isinstance(e, httpx.TimeoutException) 
-                or isinstance(e, ValueError)
-                or (isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500)
-            )
-            
-            if is_last_attempt or not is_transient:
-                if isinstance(e, httpx.TimeoutException):
-                    logger.error(
-                        "pollinations_timeout",
-                        extra={
-                            "event": "image_generation_timeout_fatal",
-                            "provider": "Pollinations",
-                            "duration_sec": duration,
-                            "attempt": attempt + 1,
-                            "max_retries": max_retries,
-                            "error": str(e)
-                        }
-                    )
-                    raise HTTPException(
-                        status_code=504,
-                        detail="Image generation request timed out. Please try again."
-                    )
-                elif isinstance(e, ValueError):
-                    logger.error(
-                        "pollinations_invalid_content_type_fatal",
-                        extra={
-                            "event": "image_generation_content_type_fatal",
-                            "provider": "Pollinations",
-                            "duration_sec": duration,
-                            "attempt": attempt + 1,
-                            "max_retries": max_retries,
-                            "error": str(e)
-                        }
-                    )
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Image generation failed: {str(e)}"
-                    )
-                else:
-                    logger.error(
-                        "pollinations_http_error",
-                        extra={
-                            "event": "image_generation_http_error_fatal",
-                            "provider": "Pollinations",
-                            "duration_sec": duration,
-                            "status_code": e.response.status_code,
-                            "attempt": attempt + 1,
-                            "max_retries": max_retries,
-                            "body": e.response.text[:500]
-                        }
-                    )
-                    status_code = 502 if e.response.status_code >= 500 else 400
-                    raise HTTPException(
-                        status_code=status_code,
-                        detail="Image generation service is temporarily unavailable. Please try again."
-                    )
-            
-            logger.warning(
-                f"Transient error occurred during image generation ({e}).",
-                extra={
-                    "event": "image_generation_transient_error",
-                    "provider": "Pollinations",
-                    "duration_sec": duration,
-                    "attempt": attempt + 1,
-                    "max_retries": max_retries,
-                    "error": str(e)
-                }
-            )
-            await asyncio.sleep(1.0)
-
-        except Exception as e:
-            duration = time.perf_counter() - start_time
-            logger.error(
-                "Image generation failed with unexpected error.",
-                extra={
-                    "event": "image_generation_error_fatal",
-                    "provider": "Pollinations",
-                    "duration_sec": duration,
-                    "attempt": attempt + 1,
-                    "max_retries": max_retries,
-                    "error": str(e)
-                }
-            )
-            raise HTTPException(
-                status_code=500, 
-                detail="Image generation failed due to a network error. Please try again."
-            )
+    engine = ImageRulesEngine()
+    prompt = engine.build_deterministic_prompt(topic=topic)
+    
+    logger.info(f"[IMAGE GEN] Deterministic prompt for topic '{topic}': {prompt[:80]}...")
+    
+    provider = PollinationsImageProvider()
+    image_data_uri = await provider.generate_image(prompt)
+    
+    if not image_data_uri:
+        raise HTTPException(
+            status_code=502,
+            detail="Image generation service is temporarily unavailable. Please try again."
+        )
+    
+    return image_data_uri
 
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)
 async def generate_image_endpoint(
     payload: ImageGenerateRequest,
-    request: Request
+    request: Request,
+    x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
     """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
-    logger.debug(f"generate_image_endpoint invoked for topic: {payload.topic}")
+    run_id = x_run_id or f"manual_img_{int(time.time())}"
+    logger.debug(f"generate_image_endpoint invoked for topic: {payload.topic} [RunID: {run_id}]")
     try:
         topic = payload.topic or "technology branding"
         draft_text = payload.draft_text or ""
@@ -299,7 +93,7 @@ async def generate_image_endpoint(
         return {"image_url": image_url, "success": True}
             
     except Exception as e:
-        logger.error(f"Image generation failed: {e}")
+        logger.error(f"Image generation failed: {e} [RunID: {run_id}]")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -309,23 +103,21 @@ async def generate_image_endpoint(
 @router.post("", response_model=DraftResponse)
 async def generate_content(
     payload: GenerateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
     """Generate a LinkedIn post draft using Gemini and Cohere."""
+    run_id = x_run_id or f"manual_gen_{int(time.time())}"
+    logger.info(f"Manual generation started for topic: {payload.topic} [RunID: {run_id}]")
     try:
         pipeline = ContentGenerationPipeline()
-        import time
         context = PipelineContext(
             topic=payload.topic,
             db=db,
             persona_id=payload.persona_id,
-            trace_id=f"manual_{int(time.time())}"
+            trace_id=run_id
         )
         draft = await pipeline.run(context)
-        if draft.llm_metadata:
-            metadata = dict(draft.llm_metadata)
-            metadata["model"] = "gemini-3.5-flash & cohere"
-            draft.llm_metadata = metadata
         return draft
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -366,15 +158,29 @@ async def get_draft(
 async def update_draft(
     draft_id: str,
     payload: DraftUpdatePayload,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
     """Update the content text and optional image of a draft."""
+    run_id = x_run_id or f"manual_upd_{int(time.time())}"
+    logger.info(f"Updating draft {draft_id} [RunID: {run_id}]")
     stmt = select(ContentDraft).where(ContentDraft.id == draft_id)
     res = await db.execute(stmt)
     draft = res.scalars().first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
     
+    # Truncation Protection
+    old_len = len(draft.content_text) if draft.content_text else 0
+    new_len = len(payload.content_text) if payload.content_text else 0
+    
+    if old_len > 500 and new_len < (old_len * 0.4):
+        logger.error(f"[TRUNCATION BLOCKED] UI attempted to truncate draft from {old_len} to {new_len} chars.")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Suspicious truncation detected. The new text ({new_len} chars) is less than 40% of the original text ({old_len} chars). If this is intentional, please edit in smaller chunks."
+        )
+        
     draft.content_text = payload.content_text
     
     # Save image_url in llm_metadata
@@ -390,13 +196,16 @@ async def update_draft(
 @router.post("/drafts/{draft_id}/publish", response_model=DraftResponse)
 async def publish_draft_endpoint(
     draft_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
     """Immediately publish a draft to LinkedIn."""
+    run_id = x_run_id or f"manual_pub_{int(time.time())}"
+    logger.info(f"Manual publish initiated for {draft_id} [RunID: {run_id}]")
     import traceback
     try:
         # Real publishing path
-        draft = await pub_orchestrator.publish_draft(db, draft_id)
+        draft = await pub_orchestrator.publish_draft(db, draft_id, trace_id=run_id)
         
         # Check for local image URL gracefully in real publishing path (just in case)
         image_url = (draft.llm_metadata or {}).get("image_url")

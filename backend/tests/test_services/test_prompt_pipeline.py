@@ -50,10 +50,10 @@ from app.services.generation.prompt_templates import (
     WRITING_DNA_TEMPLATE,
     COHERE_REFINEMENT_TEMPLATE,
     OUTPUT_SCHEMA_TEMPLATE,
-    IMAGE_RULES_TEMPLATE,
     SELF_CHECK_TEMPLATE,
 )
 from app.schemas.generation import LLMGenerationOutput
+from app.services.generation.image_quality_gate import ImageQualityGate
 
 # Setup in-memory database for testing
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -214,8 +214,8 @@ class TestImageRulesEngine:
     def test_rules_contain_preferred_attributes(self):
         engine = ImageRulesEngine()
         rules = engine.get_rules()
-        assert "editorial photography" in rules
-        assert "SaaS product visuals" in rules
+        assert "Corporate editorial photography" in rules
+        assert "Business magazine quality" in rules
 
     def test_rules_contain_forbidden_elements(self):
         engine = ImageRulesEngine()
@@ -249,11 +249,12 @@ class TestPromptBuilder:
         assert "HOOK:" in prompt  # WRITING DNA
         assert "EVIDENCE RULE" in prompt  # WRITING DNA
         assert "Goal:" in prompt  # CONTENT STRATEGY
-        assert "cinematic" in prompt.lower()  # IMAGE RULES
+        # IMAGE RULES removed from prompt (P5) — image prompts are now deterministic
         assert "SELF-REVISION" in prompt  # SELF-CHECK
         assert "metadata" in prompt  # OUTPUT CONTRACT
 
-    def test_cohere_prompt_contains_rules(self):
+    def test_cohere_prompt_deprecated_but_still_works(self):
+        """Cohere refinement template is deprecated but method still returns it."""
         builder = PromptBuilder()
         prompt = builder.build_cohere_prompt()
         assert "delve" in prompt
@@ -323,6 +324,78 @@ class TestPromptTemplates:
         assert "metadata" in OUTPUT_SCHEMA_TEMPLATE
         assert "post_type" in OUTPUT_SCHEMA_TEMPLATE
 
-    def test_image_rules_template_has_strict_constraints(self):
-        assert "cinematic" in IMAGE_RULES_TEMPLATE.lower()
-        assert "no text" in IMAGE_RULES_TEMPLATE.lower() or "text" in IMAGE_RULES_TEMPLATE.lower()
+    def test_output_schema_no_image_prompt(self):
+        """image_prompt was removed from schema (P5) — deterministic prompts."""
+        assert "image_prompt" not in OUTPUT_SCHEMA_TEMPLATE
+
+
+# ==========================================
+# 9. DETERMINISTIC IMAGE PROMPT TESTS
+# ==========================================
+class TestDeterministicImagePrompts:
+
+    def test_ai_topic_matches_visual(self):
+        engine = ImageRulesEngine()
+        prompt = engine.build_deterministic_prompt("Building AI agents with Python")
+        assert "ai" in prompt.lower() or "visualization" in prompt.lower()
+        assert "professional photography" in prompt
+        assert "no text" in prompt
+
+    def test_generic_topic_uses_default(self):
+        engine = ImageRulesEngine()
+        prompt = engine.build_deterministic_prompt("Random thoughts on life")
+        assert "Minimal modern tech workspace" in prompt
+
+    def test_prompt_includes_style(self):
+        engine = ImageRulesEngine()
+        prompt = engine.build_deterministic_prompt("DevOps CI/CD pipelines")
+        # Should include one of the PREFERRED_STYLES
+        assert any(style in prompt for style in ImageRulesEngine.PREFERRED_STYLES)
+
+    def test_prompt_never_empty(self):
+        engine = ImageRulesEngine()
+        for topic in ["", "a", "x" * 1000, "Python AI DevOps"]:
+            prompt = engine.build_deterministic_prompt(topic)
+            assert len(prompt) > 50
+
+
+# ==========================================
+# 10. IMAGE QUALITY GATE TESTS
+# ==========================================
+class TestImageQualityGate:
+
+    def test_valid_jpeg(self):
+        import base64
+        # Create a minimal valid JPEG (FF D8 FF header + padding to >10KB)
+        jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
+        data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
+        is_valid, reason = ImageQualityGate.validate(data_uri)
+        assert is_valid
+        assert reason == ""
+
+    def test_too_small_image(self):
+        import base64
+        tiny = b'\xff\xd8\xff\xe0' + b'\x00' * 100  # Only ~104 bytes
+        data_uri = f"data:image/jpeg;base64,{base64.b64encode(tiny).decode()}"
+        is_valid, reason = ImageQualityGate.validate(data_uri)
+        assert not is_valid
+        assert "too small" in reason.lower()
+
+    def test_invalid_header(self):
+        import base64
+        bad_bytes = b'\x00\x00\x00\x00' + b'\x00' * 15_000
+        data_uri = f"data:image/jpeg;base64,{base64.b64encode(bad_bytes).decode()}"
+        is_valid, reason = ImageQualityGate.validate(data_uri)
+        assert not is_valid
+        assert "header" in reason.lower()
+
+    def test_empty_input(self):
+        is_valid, reason = ImageQualityGate.validate("")
+        assert not is_valid
+
+    def test_valid_png(self):
+        import base64
+        png_bytes = b'\x89PNG\r\n\x1a\n' + b'\x00' * 15_000
+        data_uri = f"data:image/png;base64,{base64.b64encode(png_bytes).decode()}"
+        is_valid, reason = ImageQualityGate.validate(data_uri)
+        assert is_valid

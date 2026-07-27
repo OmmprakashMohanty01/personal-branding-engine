@@ -24,6 +24,7 @@ class ContentDraft(Base):
     __tablename__ = "content_drafts"
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key = Column(String(100), unique=True, nullable=True, index=True)
     persona_id = Column(String(36), ForeignKey("personas.id", ondelete="SET NULL"), nullable=True)
     platform = Column(String(50), default="linkedin", nullable=False)
     content_text = Column(Text, nullable=False)

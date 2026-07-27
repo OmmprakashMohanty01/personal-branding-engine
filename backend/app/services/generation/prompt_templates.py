@@ -184,27 +184,6 @@ Creative writing must never appear as autobiography.
 
 If uncertain, choose honesty over creativity."""
 
-# ---------------------------------------------------------------------------
-# IMAGE RULES
-# ---------------------------------------------------------------------------
-IMAGE_RULES_TEMPLATE = """\
-Image Prompt Rules (if requires_image is true):
-The image should reinforce the emotional idea of the post.
-
-The image_prompt MUST describe:
-- Cinematic photography or visual metaphor
-- Environmental storytelling — a SCENE, not an isolated object
-- Dramatic lighting with shallow depth of field
-- Macro photography or minimalist composition
-- One clear subject, LinkedIn professional aesthetic
-
-The image_prompt MUST NOT contain:
-- Text, words, or typography of any kind
-- UI screenshots, code screenshots, or dashboards
-- Laptops, monitors, or device screens
-- Floating robots, glowing blue brains, or holograms
-- Logos, brand marks, or watermarks
-- Generic glowing orbs, data streams, or particle effects"""
 
 # ---------------------------------------------------------------------------
 # SELF-CHECK / INTERNAL REVISION
@@ -229,7 +208,6 @@ OUTPUT FORMAT — respond with ONLY this JSON (no wrapper text, no markdown fenc
 {
   "content_text": "<the fully formatted post text, plain text only, double line breaks between paragraphs>",
   "requires_image": <true or false>,
-  "image_prompt": "<cinematic image description following the image rules, or null>",
   "metadata": {
     "post_type": "<one of: insight, tutorial, story, opinion, review, lesson, experiment>",
     "hook_style": "<the hook approach you actually used>",

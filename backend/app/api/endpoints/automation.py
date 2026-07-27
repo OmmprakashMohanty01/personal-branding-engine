@@ -23,7 +23,7 @@ from app.api.endpoints.generation import generate_metaphorical_image_helper
 from app.config import settings
 from app.database import get_db
 from app.models.content import ContentDraft
-from app.schemas.generation import DraftResponse
+from app.schemas.generation import DraftResponse, AutomationResponse
 from app.services.generation.context import PipelineContext
 from app.services.generation.pipeline import ContentGenerationPipeline
 from app.services.publishing.orchestrator import PublishingOrchestrator
@@ -80,23 +80,21 @@ def verify_cron_secret(
         )
 
 
-async def check_today_idempotency(db: AsyncSession) -> bool:
-    """Check if a draft or post has already been generated today (max 1/day limit)."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    today_start = datetime.datetime(now.year, now.month, now.day, tzinfo=datetime.timezone.utc)
+import sqlalchemy
+from sqlalchemy.exc import IntegrityError
 
-    stmt = select(func.count(ContentDraft.id)).where(ContentDraft.generated_at >= today_start)
+async def check_today_idempotency(db: AsyncSession, idempotency_key: str) -> Optional[ContentDraft]:
+    """Check if a draft exists for the given idempotency key."""
+    stmt = select(ContentDraft).where(ContentDraft.idempotency_key == idempotency_key)
     res = await db.execute(stmt)
-    count = res.scalar() or 0
+    return res.scalars().first()
 
-    return count > 0
-
-
-@router.post("/daily", response_model=DraftResponse)
+@router.post("/daily", response_model=AutomationResponse)
 async def generate_daily(
     request: Request,
     cron_secret_key: Optional[str] = Query(None, alias="cron_secret_key"),
     x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
+    x_run_id: Optional[str] = Header(None, alias="X-Run-ID"),
     db: AsyncSession = Depends(get_db),
 ):
     """Production automated daily generation endpoint with idempotency checks and pipeline execution."""
@@ -109,14 +107,50 @@ async def generate_daily(
             content={"detail": "Sunday: Rest day, no post generated today."},
         )
 
+    now = datetime.datetime.now(datetime.timezone.utc)
+    idempotency_key = f"daily-automation-{now.strftime('%Y-%m-%d')}"
+
     # Idempotency Check: max 1 post per calendar day
-    already_generated = await check_today_idempotency(db)
-    if already_generated:
-        logger.info("[DAILY AUTOMATION IDEMPOTENCY] Post already generated today. Skipping duplicate run.")
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={"detail": "Idempotency Guard: A post has already been generated today."},
-        )
+    existing_draft = await check_today_idempotency(db, idempotency_key)
+    if existing_draft:
+        if existing_draft.status == "PUBLISHED":
+            logger.info("[DAILY AUTOMATION IDEMPOTENCY] Post already generated and published today. Skipping duplicate run.")
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"detail": "Idempotency Guard: A post has already been generated and published today."},
+            )
+        elif existing_draft.status == "GENERATING":
+            logger.warning("[DAILY AUTOMATION] Another generation process is currently running or crashed. Returning 429.")
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Another automation process is currently running. Please try again later."},
+            )
+        # If DRAFT or FAILED, we fall through and retry publishing.
+        logger.info(f"[DAILY AUTOMATION RESUMPTION] Found existing draft {existing_draft.id} with status {existing_draft.status}. Resuming publish.")
+
+    if not existing_draft:
+        try:
+            # Create a placeholder to lock this date globally across all workers
+            new_draft = ContentDraft(
+                idempotency_key=idempotency_key,
+                status="GENERATING",
+                content_text="",
+                platform="linkedin",
+                generated_at=now,
+                llm_metadata={}
+            )
+            db.add(new_draft)
+            await db.commit()
+            await db.refresh(new_draft)
+            existing_draft = new_draft
+        except IntegrityError:
+            # Another request inserted the idempotency key exactly at the same time
+            await db.rollback()
+            logger.warning("[DAILY AUTOMATION CONCURRENCY] Concurrent request beat us to the idempotency key.")
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Another automation process just started running. Please try again later."},
+            )
 
     topic = DAILY_SCHEDULE.get(weekday)
     if not topic:
@@ -125,50 +159,84 @@ async def generate_daily(
             detail="No prompt mapped for today's weekday.",
         )
 
+    run_id = x_run_id or str(uuid.uuid4())
+    automation_start_time = datetime.datetime.now(datetime.timezone.utc)
+    is_resumed_draft = False
+    
     try:
-        trace_id = str(uuid.uuid4())
+        draft = existing_draft
         
-        # Advisory lock: Ensure only one automation job runs globally at a time
-        lock_acquired = await db.execute(text(f"SELECT pg_try_advisory_xact_lock({settings.AUTOMATION_DAILY_PUBLISH_LOCK_ID})"))
-        if not lock_acquired.scalar():
-            logger.warning(f"[DAILY AUTOMATION] Another generation process is currently running. Dropping request. trace_id={trace_id}")
-            return JSONResponse(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={"detail": "Another automation process is currently running. Please try again later."},
-            )
+        # Only run generation if we haven't generated yet
+        if draft.status == "GENERATING" or not draft.content_text:
+            pipeline = ContentGenerationPipeline()
+            # We pass run_id as trace_id for downstream logging correlation
+            context = PipelineContext(topic=topic, db=db, trace_id=run_id, draft=draft)
+            
+            # generate the draft and commit to db (checkpoint)
+            draft = await pipeline.run(context, commit_db=True)
+            
+            # Ensure run_id is persisted in llm_metadata
+            meta = dict(draft.llm_metadata or {})
+            meta["run_id"] = run_id
+            draft.llm_metadata = meta
+            await db.commit()
+        else:
+            is_resumed_draft = True
 
-        pipeline = ContentGenerationPipeline()
-        context = PipelineContext(topic=topic, db=db, trace_id=trace_id)
-        
-        # generate the draft but do not commit to db (flush instead)
-        draft = await pipeline.run(context, commit_db=False)
         
         if not settings.AUTO_PUBLISH_ENABLED:
-            logger.info(f"[DAILY AUTOMATION] Auto-publish is disabled via AUTO_PUBLISH_ENABLED=False. Committing draft {draft.id} without publishing. trace_id={trace_id}")
-            await db.commit()
-            return draft
+            logger.info(f"[DAILY AUTOMATION] Auto-publish is disabled via AUTO_PUBLISH_ENABLED=False. Skipping publishing for {draft.id}. [RunID: {run_id}]")
+            return AutomationResponse(
+                status="draft_created",
+                draft_id=draft.id,
+                character_count=len(draft.content_text),
+                image_uploaded=bool(draft.llm_metadata.get("image_url")),
+                trace_id=run_id
+            )
             
         if not settings.ENABLE_LINKEDIN_PUBLISHING:
-            logger.info(f"[DAILY AUTOMATION] LinkedIn publishing is disabled via ENABLE_LINKEDIN_PUBLISHING=False. Committing draft {draft.id} without publishing. trace_id={trace_id}")
-            await db.commit()
-            return draft
+            logger.info(f"[DAILY AUTOMATION] LinkedIn publishing is disabled via ENABLE_LINKEDIN_PUBLISHING=False. Skipping publishing for {draft.id}. [RunID: {run_id}]")
+            return AutomationResponse(
+                status="draft_created",
+                draft_id=draft.id,
+                character_count=len(draft.content_text),
+                image_uploaded=bool(draft.llm_metadata.get("image_url")),
+                trace_id=run_id
+            )
         
-        # publish directly within the same transaction to guarantee atomicity
+        # publish! The orchestrator handles its own commit/rollback inside publish_draft
         publishing_orchestrator = PublishingOrchestrator()
-        published_draft = await publishing_orchestrator.publish_draft(db, draft.id, trace_id=trace_id)
+        publish_start_time = datetime.datetime.now(datetime.timezone.utc)
+        published_draft = await publishing_orchestrator.publish_draft(db, draft.id, trace_id=run_id)
+        publish_latency_ms = (datetime.datetime.now(datetime.timezone.utc) - publish_start_time).total_seconds() * 1000
+        automation_duration_ms = (datetime.datetime.now(datetime.timezone.utc) - automation_start_time).total_seconds() * 1000
         
+        telemetry = draft.llm_metadata.get("telemetry", {})
+        
+        # Distinguishing Draft ID (payload PK) vs Idempotency Key (daily semantic lock)
         logger.info(
             f"[DAILY AUTOMATION SUCCESS] "
-            f"Trace: {context.trace_id}, Draft: {draft.id}, "
-            f"Provider Latency: {context.telemetry.provider_latency_ms}ms, "
-            f"Retries: {context.telemetry.retry_count}, "
-            f"Fallback: {context.telemetry.fallback_provider_used}, "
+            f"[RunID: {run_id}] Draft: {draft.id}, IdempotencyKey: {draft.idempotency_key}, "
+            f"IsResumed: {is_resumed_draft}, "
+            f"Provider Latency: {telemetry.get('provider_latency_ms', 0)}ms, "
+            f"Publish Latency: {publish_latency_ms:.1f}ms, "
+            f"Total Duration: {automation_duration_ms:.1f}ms, "
+            f"Retries: {telemetry.get('retry_count', 0)}, "
+            f"Fallback: {telemetry.get('fallback_provider_used')}, "
             f"Status: {published_draft.status}"
         )
-        return published_draft
+        metadata = published_draft.llm_metadata or {}
+        return AutomationResponse(
+            status=published_draft.status,
+            draft_id=published_draft.id,
+            linkedin_post_id=metadata.get("linkedin_post_id"),
+            character_count=len(published_draft.content_text),
+            image_uploaded=bool(metadata.get("image_url")),
+            trace_id=run_id
+        )
     except Exception as e:
-        logger.error(f"[DAILY AUTOMATION ERROR] Failed daily generation: {e}")
-        # Explicitly rollback the transaction if an error occurs to maintain atomicity
+        logger.error(f"[DAILY AUTOMATION ERROR] Failed daily generation: {e} [RunID: {run_id if 'run_id' in locals() else 'N/A'}]")
+        # The pipeline and orchestrator handle their own atomic commits, so we rollback any uncommitted state
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -202,7 +270,8 @@ async def get_automation_dashboard(
             "fallback_used": telemetry.get("fallback_provider_used"),
             "retries": telemetry.get("retry_count", 0),
             "generation_time_ms": telemetry.get("total_duration_ms", 0),
-            "trace_id": meta.get("trace_id"),
+            "trace_id": meta.get("trace_id") or meta.get("run_id"),
+            "run_id": meta.get("run_id"),
         })
         
     return JSONResponse(status_code=200, content={"dashboard": dashboard_data})

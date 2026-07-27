@@ -36,14 +36,13 @@ def mock_db_session():
     
     # Mock check_today_idempotency
     mock_idem_result = MagicMock()
-    mock_idem_result.scalar.return_value = 0
+    mock_idem_result.scalars().first.return_value = None
     
     # Sequence of returns for db.execute:
-    # 1. pg_try_advisory_xact_lock (scalar -> True)
-    # 2. check_today_idempotency count (scalar -> 0)
-    # 3. get_persona (scalars().first() -> persona)
-    # 4. publish_draft select draft (scalars().first() -> draft)
-    # 5. _get_default_linkedin_account (scalars().first() -> account)
+    # 1. check_today_idempotency count (scalars().first() -> None)
+    # 2. get_persona (scalars().first() -> persona)
+    # 3. publish_draft select draft (scalars().first() -> draft)
+    # 4. _get_default_linkedin_account (scalars().first() -> account)
     mock_draft = ContentDraft(
         id="mock-draft-id",
         content_text="E2E test content",
@@ -59,10 +58,9 @@ def mock_db_session():
     mock_account_result.scalars().first.return_value = mock_account
 
     mock_session.execute.side_effect = [
-        mock_idem_result,    # 1. check_today_idempotency (scalar -> 0)
-        mock_result,         # 2. pg_try_advisory_xact_lock (scalar -> True)
-        mock_draft_result,   # 3. publish_draft (ContentDraft)
-        mock_account_result, # 4. _get_default_linkedin_account
+        mock_idem_result,    # 1. check_today_idempotency (scalars().first() -> None)
+        mock_draft_result,   # 2. publish_draft (ContentDraft)
+        mock_account_result, # 3. _get_default_linkedin_account
     ]
     
     return mock_session
@@ -115,11 +113,16 @@ async def test_generate_daily_atomic_success(mock_publish, mock_run, mock_get_db
 @pytest.mark.asyncio
 @patch("app.api.endpoints.automation.get_db")
 async def test_generate_daily_concurrency_lock_failure(mock_get_db):
-    # Setup mock to simulate another job holding the lock
+    # Setup mock to simulate another job holding the lock via IntegrityError on commit
     mock_session = AsyncMock(spec=AsyncSession)
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = False # Lock acquisition failed
-    mock_session.execute.return_value = mock_result
+    
+    # Check today idempotency returns None
+    mock_idem_result = MagicMock()
+    mock_idem_result.scalars().first.return_value = None
+    mock_session.execute.return_value = mock_idem_result
+    
+    from sqlalchemy.exc import IntegrityError
+    mock_session.commit.side_effect = IntegrityError("Concurrent insert", params=None, orig=None)
     
     app.dependency_overrides[get_db] = lambda: mock_session
 
@@ -131,7 +134,7 @@ async def test_generate_daily_concurrency_lock_failure(mock_get_db):
     app.dependency_overrides = {}
     
     assert response.status_code == 429
-    assert "Another automation process is currently running" in response.json()["detail"]
+    assert "Another automation process just started running" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -150,6 +153,21 @@ async def test_generate_daily_atomic_rollback_on_publish_failure(mock_publish, m
         llm_metadata={}
     )
     mock_run.return_value = mock_draft
+    
+    mock_idem_result = MagicMock()
+    mock_idem_result.scalars().first.return_value = None
+    
+    mock_draft_result = MagicMock()
+    mock_draft_result.scalars().first.return_value = mock_draft
+    
+    mock_account_result = MagicMock()
+    mock_account_result.scalars().first.return_value = LinkedInAccount(id="test", linkedin_person_urn="test")
+    
+    mock_db_session.execute.side_effect = [
+        mock_idem_result,
+        mock_draft_result,
+        mock_account_result
+    ]
     
     app.dependency_overrides[get_db] = lambda: mock_db_session
 

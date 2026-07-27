@@ -1,0 +1,43 @@
+name: CI / CD Regression Suite
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Backend Pytest Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: uv sync
+
+      - name: Run Pytest Regression Suite
+        working-directory: ./backend
+        run: uv run pytest tests/
+        env:
+          # Provide dummy env vars for tests that require them
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          ENVIRONMENT: test
+          CRON_SECRET_KEY: test_secret_key
+          GEMINI_API_KEY: mock_gemini_key
+          COHERE_API_KEY: mock_cohere_key
+          ENABLE_LINKEDIN_PUBLISHING: 'False'
+          AUTO_PUBLISH_ENABLED: 'False'

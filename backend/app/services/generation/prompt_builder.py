@@ -23,7 +23,6 @@ from app.services.generation.prompt_templates import (
     CONTENT_STRATEGY_TEMPLATE,
     WRITING_DNA_TEMPLATE,
     MEMORY_TEMPLATE,
-    IMAGE_RULES_TEMPLATE,
     SELF_CHECK_TEMPLATE,
     OUTPUT_SCHEMA_TEMPLATE,
     COHERE_REFINEMENT_TEMPLATE,
@@ -144,8 +143,8 @@ class PromptBuilder:
         # GROUNDING CONTRACT
         sections.append(GROUNDING_CONTRACT_TEMPLATE)
 
-        # IMAGE RULES
-        sections.append(IMAGE_RULES_TEMPLATE)
+        # IMAGE RULES removed: image prompts are now deterministic (P5).
+        # The LLM no longer generates image prompts.
 
         # SELF-CHECK
         sections.append(SELF_CHECK_TEMPLATE)
@@ -181,7 +180,13 @@ class PromptBuilder:
         return Template(USER_TEMPLATE).render(topic=topic, feedback=feedback)
 
     def build_cohere_prompt(self) -> str:
-        """Return the Stage 2 Cohere refinement system prompt."""
+        """Return the Stage 2 Cohere refinement system prompt.
+        
+        .. deprecated::
+            Stage 2 Cohere rewriting has been removed from the pipeline.
+            Cohere is now only used as a Stage 1 fallback generator.
+            This method is kept for backward compatibility.
+        """
         return COHERE_REFINEMENT_TEMPLATE
 
     def get_generation_metadata(self) -> dict:
