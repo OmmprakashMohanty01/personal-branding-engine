@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration import LinkedInAccount
 from app.services.publishing.linkedin.crypto import encrypt_token, decrypt_token
+from app.services.generation.formatters import LinkedInFormatter
 
 logger = logging.getLogger("branding_engine.publishing.linkedin.client")
 
@@ -216,9 +217,11 @@ class LinkedInClient:
         # ── STEP 8-9: Publish post via modern /rest/posts endpoint ──
         publish_url = f"{self.api_url}/rest/posts"
         
+        sanitized_text = LinkedInFormatter.sanitize_for_linkedin_api(text)
+        
         payload = {
             "author": account.linkedin_person_urn,
-            "commentary": text,
+            "commentary": sanitized_text,
             "visibility": "PUBLIC",
             "distribution": {
                 "feedDistribution": "MAIN_FEED",
@@ -240,18 +243,17 @@ class LinkedInClient:
         logger.info(f"[STEP 9] POST {publish_url}")
         logger.info(f"[LINKEDIN API] Request URL: {publish_url} | Version: {rest_headers.get('LinkedIn-Version')}")
         
-        logger.debug(f"[DEBUG PAYLOAD TEXT LENGTH]: {len(text)} chars | [DEBUG TEXT END]: {text[-50:]}")
+        logger.debug(f"[DEBUG PAYLOAD TEXT LENGTH]: {len(sanitized_text)} chars | [DEBUG TEXT END]: {sanitized_text[-50:]}")
         
         # Task 3: Inject Validation Assertions right before posting to publish
-        post_text = text
+        post_text = sanitized_text
         assert len(post_text) > 100, "Text was truncated prematurely"
         if image_url:
             assert isinstance(image_bytes, bytes) and len(image_bytes) > 1000, "Image bytes are corrupted or empty"
             
         async with httpx.AsyncClient() as client:
             try:
-                # Pass the raw text payload directly to the API without any truncation or regex stripping.
-                payload["commentary"] = text 
+                # Payload commentary is already safely sanitized.
                 resp = await client.post(publish_url, json=payload, headers=rest_headers)
             except (httpx.TimeoutException, httpx.ReadError, httpx.ConnectError) as e:
                 logger.warning(f"[STEP 9] Network timeout during publish: {e}. Attempting idempotency recovery...")
