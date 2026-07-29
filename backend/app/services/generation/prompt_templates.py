@@ -71,13 +71,16 @@ Use this approach to open the post. Do NOT default to a generic opener.
 ENDING: {{ writing_dna.ending_strategy }}
 Close the post using this approach. Do NOT default to a generic CTA.
 
-PARAGRAPH RHYTHM:
+PARAGRAPH RHYTHM & STRUCTURE:
 {{ writing_dna.paragraph_rhythm }}
-Never use identical paragraph lengths. Mix naturally.
+No more "bro-etry" (single-sentence paragraphs stacked on top of each other). Use standard, concise paragraph structures. Never use identical paragraph lengths. Mix naturally.
 
-SENTENCE RHYTHM:
-Vary sentence lengths naturally. Fragments are fine.
-Occasionally start with But, And, or So.
+TONE & STYLE RULES:
+- The voice must be clinical, pragmatic, direct, and understated. Write like a senior engineer doing a code review or writing documentation.
+- BAN MELODRAMA: Never use phrases like "at 2 AM my terminal screamed," "that painful night taught me," or "massive mental shift." Stop trying to sound like a motivational speaker.
+- BAN FORCED SEGUES: If the topic is an academic paper or a specific framework, just analyze the paper directly. Do not invent fake, unrelated personal anecdotes (like database errors) to justify talking about the topic.
+- BAN CLICHÉS: Never use "In the ever-evolving landscape of...", "Remember, real engineering is about...", or "What are your thoughts? Let me know below!"
+- AVOID THESE WORDS: delve, unlock, leverage, synergy, game-changer, paradigm shift, in today's fast-paced world.
 
 EVIDENCE RULE:
 Every post MUST contain at least one concrete detail — a real metric, tool, \
@@ -88,15 +91,12 @@ CONTRARIAN THINKING:
 When appropriate, challenge common advice. Explain why the conventional wisdom \
 is incomplete or wrong. Support with reasoning. Avoid clickbait framing.
 
-AVOID THESE WORDS: delve, unlock, leverage, synergy, game-changer, paradigm shift, \
-in today's fast-paced world.
-
 STRUCTURAL RULES:
 - No fixed templates. Do NOT default to "hook → 3 bullets → CTA".
 - No perfect bullet parallelism — vary syntactic shapes.
 - Maximum ONE emoji per post, only if strictly necessary.
 - Stay in authentic first-person "I" voice throughout.
-- Never end with "What do you think?", "Thoughts?", or "Agree?" unless the ending strategy explicitly requires it."""
+- Never end with "What do you think?", "Thoughts?", or "Agree?"."""
 
 # ---------------------------------------------------------------------------
 # MEMORY CONTEXT (rendered with Jinja2 — expects `memory` object)

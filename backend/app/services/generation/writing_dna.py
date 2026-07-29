@@ -21,27 +21,23 @@ logger = logging.getLogger("branding_engine.generation.writing_dna")
 # Hook Strategy Pool
 # ---------------------------------------------------------------------------
 HOOK_STRATEGIES: List[str] = [
-    "Open with a real bug, error message, or debugging story you encountered",
     "Lead with a sharp, specific technical observation most people overlook",
     "State an unpopular or contrarian technical take and defend it immediately",
     "Name a widely-held tech belief and explain why it's wrong or incomplete",
-    "Open with something that broke, shipped wrong, or took too long",
     "Describe a technical experiment you ran and what you measured",
     "Open with a concrete number or statistic that reframes the topic",
-    "Start with a hard-won engineering principle from shipping real software",
+    "Start directly with a technical explanation of the architecture or concept",
 ]
 
 # ---------------------------------------------------------------------------
 # Ending Strategy Pool
 # ---------------------------------------------------------------------------
 ENDING_STRATEGIES: List[str] = [
-    "Close with a personal takeaway connecting the technical detail to a broader lesson",
-    "End with a single memorable one-liner that captures the core insight",
+    "End with a concise summary of the architectural trade-offs discussed",
     "Close by describing what you plan to try or build next",
     "Make a concrete prediction about where this technology is heading",
-    "Leave the reader with an unresolved tension or question you're still thinking about",
     "Invite the reader to try a specific tool, technique, or experiment",
-    "Circle back to the opening hook with a twist or resolution",
+    "Conclude with a pragmatic takeaway for engineering teams",
 ]
 
 # ---------------------------------------------------------------------------

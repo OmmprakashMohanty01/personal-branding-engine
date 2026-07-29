@@ -114,9 +114,11 @@ class ImageRulesEngine:
         style = random.choice(self.PREFERRED_STYLES)
 
         prompt = (
-            f"{matched_visual}, {style}, "
-            f"professional photography, 8k resolution, sharp focus, "
-            f"realistic, no text, no watermarks"
+            f"Professional editorial photography, {matched_visual}, {style}, "
+            f"natural sunlight, depth of field, 35mm lens, clean modern tech workspace, "
+            f"Unsplash style, minimalist, photorealistic. "
+            f"negative prompt: glowing screens, neon, cyberpunk, sci-fi, hacker, "
+            f"text, messy, 3d render, cartoon, digital art"
         )
 
         logger.info(
