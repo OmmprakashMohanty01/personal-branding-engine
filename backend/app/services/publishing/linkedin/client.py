@@ -231,8 +231,7 @@ class LinkedInClient:
         if image_urn:
             payload["content"] = {
                 "media": {
-                    "id": image_urn,
-                    "title": "AI Generated Visual"
+                    "id": image_urn
                 }
             }
             logger.info(f"[STEP 8] Attached image URN {image_urn} to post payload")
@@ -251,6 +250,8 @@ class LinkedInClient:
             
         async with httpx.AsyncClient() as client:
             try:
+                # Pass the raw text payload directly to the API without any truncation or regex stripping.
+                payload["commentary"] = text 
                 resp = await client.post(publish_url, json=payload, headers=rest_headers)
             except (httpx.TimeoutException, httpx.ReadError, httpx.ConnectError) as e:
                 logger.warning(f"[STEP 9] Network timeout during publish: {e}. Attempting idempotency recovery...")
