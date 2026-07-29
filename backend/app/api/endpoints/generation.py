@@ -183,11 +183,14 @@ async def update_draft(
         
     draft.content_text = payload.content_text
     
+    from sqlalchemy.orm.attributes import flag_modified
+    
     # Save image_url in llm_metadata
     metadata = dict(draft.llm_metadata or {})
     if payload.image_url is not None:
         metadata["image_url"] = payload.image_url
     draft.llm_metadata = metadata
+    flag_modified(draft, "llm_metadata")
     
     await db.commit()
     await db.refresh(draft)

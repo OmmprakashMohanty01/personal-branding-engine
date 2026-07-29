@@ -364,6 +364,22 @@ export default function DashboardPage() {
 
     try {
       setIsPublishing(true);
+      
+      // Auto-save before publishing to ensure backend has the latest text and image
+      showToast("Saving latest changes before publishing...", "info");
+      const saveRes = await fetch(`${API_BASE}/generation/drafts/${selectedDraft.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content_text: editorText, image_url: editorImageUrl }),
+      });
+      
+      if (!saveRes.ok) {
+        const errorData = await saveRes.json().catch(() => ({}));
+        showToast(errorData.detail || "Failed to auto-save before publishing.", "error");
+        setIsPublishing(false);
+        return;
+      }
+
       showToast("Publishing draft to LinkedIn...", "info");
       
       const res = await fetch(`${API_BASE}/generation/drafts/${selectedDraft.id}/publish`, {
