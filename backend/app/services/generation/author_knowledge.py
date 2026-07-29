@@ -21,7 +21,6 @@ GITHUB_URL = "https://github.com/OmmprakashMohanty01"
 
 AUTHOR_LINKS: Dict[str, str] = {
     "GitHub": GITHUB_URL,
-    "Portfolio": "https://ommprakash-portfolio.vercel.app",
 }
 
 AUTHOR_BACKGROUND = (

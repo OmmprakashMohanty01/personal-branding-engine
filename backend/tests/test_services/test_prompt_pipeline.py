@@ -220,8 +220,10 @@ class TestImageRulesEngine:
     def test_rules_contain_forbidden_elements(self):
         engine = ImageRulesEngine()
         rules = engine.get_rules()
-        assert "fantasy" in rules
-        assert "robots" in rules
+        assert "cyberpunk" in rules
+        assert "neon" in rules
+        assert "people" in rules
+        assert "faces" in rules
 
 
 # ==========================================
@@ -337,14 +339,14 @@ class TestDeterministicImagePrompts:
     def test_ai_topic_matches_visual(self):
         engine = ImageRulesEngine()
         prompt = engine.build_deterministic_prompt("Building AI agents with Python")
-        assert "ai" in prompt.lower() or "visualization" in prompt.lower()
+        assert "geometric glass shapes" in prompt.lower() or "abstract" in prompt.lower()
         assert "professional" in prompt.lower() and "photography" in prompt.lower()
         assert "text" in prompt.lower()
 
     def test_generic_topic_uses_default(self):
         engine = ImageRulesEngine()
         prompt = engine.build_deterministic_prompt("Random thoughts on life")
-        assert "Minimal modern tech workspace" in prompt
+        assert "Abstract geometric shapes" in prompt
 
     def test_prompt_includes_style(self):
         engine = ImageRulesEngine()

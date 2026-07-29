@@ -21,23 +21,21 @@ logger = logging.getLogger("branding_engine.generation.writing_dna")
 # Hook Strategy Pool
 # ---------------------------------------------------------------------------
 HOOK_STRATEGIES: List[str] = [
-    "Lead with a sharp, specific technical observation most people overlook",
-    "State an unpopular or contrarian technical take and defend it immediately",
-    "Name a widely-held tech belief and explain why it's wrong or incomplete",
-    "Describe a technical experiment you ran and what you measured",
-    "Open with a concrete number or statistic that reframes the topic",
-    "Start directly with a technical explanation of the architecture or concept",
+    "State a strong contrarian industry thesis and defend it immediately",
+    "Define a systemic failure in how companies build software today",
+    "Open with a hard macro-economic or team velocity observation",
+    "Challenge a widely accepted management or engineering practice",
+    "State a definitive business impact of a specific technical choice",
 ]
 
 # ---------------------------------------------------------------------------
 # Ending Strategy Pool
 # ---------------------------------------------------------------------------
 ENDING_STRATEGIES: List[str] = [
-    "End with a concise summary of the architectural trade-offs discussed",
-    "Close by describing what you plan to try or build next",
-    "Make a concrete prediction about where this technology is heading",
-    "Invite the reader to try a specific tool, technique, or experiment",
-    "Conclude with a pragmatic takeaway for engineering teams",
+    "Deliver an abrupt, strong concluding thesis. Do not ask a question.",
+    "State the definitive business outcome of this approach.",
+    "End abruptly with the strategic lesson learned.",
+    "Conclude by rejecting the false dichotomy often associated with this topic.",
 ]
 
 # ---------------------------------------------------------------------------
@@ -56,33 +54,25 @@ PARAGRAPH_RHYTHMS: List[str] = [
 # Content Strategy Pools
 # ---------------------------------------------------------------------------
 CONTENT_GOALS: List[str] = [
-    "Teach — share a specific, actionable technical concept the reader can use today",
-    "Inspire — show what's possible when you build something from scratch",
-    "Challenge assumptions — question conventional wisdom with evidence",
-    "Tell a story — narrate a real engineering experience with a beginning, middle, and end",
-    "Share an experiment — describe something you tested and what you learned",
-    "Document progress — share a real update from a project you're building in public",
-    "Build credibility — demonstrate deep expertise on a focused technical topic",
-    "Generate discussion — pose a genuine question that engineers would debate",
-    "Recruit opportunities — showcase skills and projects that attract collaborators or employers",
+    "Establish thought leadership by challenging conventional industry wisdom",
+    "Align technical architecture with business strategy and team velocity",
+    "Provide a high-level systemic analysis of an emerging technology trend",
+    "Demonstrate authoritative expertise on a complex engineering problem",
+    "Critique the hidden costs or scalability limits of popular paradigms",
 ]
 
 AUDIENCES: List[str] = [
-    "Software engineers building production systems",
-    "AI/ML engineers working with LLMs and automation",
-    "Recruiters and hiring managers evaluating technical talent",
-    "Startup founders making build-vs-buy technology decisions",
-    "Computer science students exploring career paths",
-    "Engineering managers leading technical teams",
+    "C-Suite executives and VP-level engineering leadership",
+    "Startup founders and technical co-founders",
+    "Senior engineering managers making strategic build-vs-buy decisions",
+    "Directors of Engineering focusing on team velocity and cost",
 ]
 
 EMOTIONAL_INTENTS: List[str] = [
-    "Curiosity — make the reader want to explore this further",
-    "Confidence — make the reader feel capable of tackling this themselves",
-    "Respect — earn the reader's trust through demonstrated expertise",
-    "Motivation — push the reader to start building or experimenting",
-    "Reflection — make the reader reconsider something they took for granted",
-    "Relief — validate a struggle the reader has silently experienced",
+    "Authority — establish undeniable expertise and strategic vision",
+    "Clarity — cut through industry noise and hype",
+    "Respect — command attention through concise business pragmatism",
+    "Conviction — state a definitive truth without hesitation",
 ]
 
 

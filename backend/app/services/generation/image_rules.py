@@ -33,40 +33,40 @@ class ImageRulesEngine:
     ]
 
     FORBIDDEN_ELEMENTS = [
-        "fantasy",
-        "illustrations",
-        "animals",
-        "robots",
-        "glowing effects",
+        "people",
+        "faces",
+        "glowing screens",
+        "neon",
         "cyberpunk",
-        "steampunk",
-        "dramatic cinematic scenes",
+        "text",
+        "messy",
+        "3d render",
+        "cartoon",
+        "desk",
+        "computer monitor",
+        "keyboard",
     ]
 
     # Deterministic topic-to-visual mapping for image prompt generation.
     # Each key is matched as a substring against the topic (case-insensitive).
     TOPIC_VISUAL_MAP = {
-        "ai": "Modern glass office with AI data visualizations on large curved monitors",
-        "machine learning": "Clean research lab with whiteboards showing diagrams and dual monitors",
-        "python": "Minimal developer workspace with dual monitors displaying clean code",
-        "fastapi": "Modern API dashboard on a large screen in a bright office",
-        "devops": "Professional server rack room with organized cabling and blue LED indicators",
-        "docker": "Clean terminal interface on a professional workstation",
-        "kubernetes": "Infrastructure monitoring dashboard in a modern operations center",
-        "cloud": "Panoramic view of a modern data center with organized server rows",
-        "career": "Professional meeting room with city skyline visible through floor-to-ceiling windows",
-        "productivity": "Organized minimal desk setup with natural lighting and a single monitor",
-        "open source": "Collaborative workspace with multiple contributors at standing desks",
-        "database": "Modern data center corridor with symmetric server racks",
-        "security": "Clean cybersecurity operations center with multiple monitoring screens",
-        "startup": "Modern co-working space with standing desks and natural light",
-        "automation": "Robotic process dashboard on a wide professional monitor",
-        "api": "Clean API architecture diagram displayed on a presentation screen",
-        "testing": "Quality assurance dashboard showing green test results on a monitor",
-        "linux": "Professional terminal session on a minimal developer workstation",
+        "architecture": "Minimalist brutalist architecture, intersecting concrete lines",
+        "system": "Minimalist brutalist architecture, intersecting concrete lines",
+        "data": "Abstract geometric glass shapes refracting light",
+        "ai": "Abstract geometric glass shapes refracting light",
+        "machine learning": "Symmetrical patterns in polished black marble",
+        "leadership": "A solitary modern chess piece on a clean marble table",
+        "management": "A solitary modern chess piece on a clean marble table",
+        "python": "Clean interlocking geometric steel structures",
+        "cloud": "Vast empty modern concrete gallery with natural skylight",
+        "devops": "Precise mechanical clockwork gears in monochrome",
+        "security": "Heavy steel vault door mechanism, macro photography",
+        "startup": "A single healthy bonsai tree on a minimal white pedestal",
+        "automation": "Perfectly aligned dominoes in a white studio space",
+        "testing": "Symmetrical reflection on a perfectly still pool of water",
     }
 
-    DEFAULT_VISUAL = "Minimal modern tech workspace with natural lighting and clean desk organization"
+    DEFAULT_VISUAL = "Abstract geometric shapes casting sharp shadows in natural light"
 
     def get_rules(self) -> str:
         """Return the complete image rules string for template injection.
@@ -115,10 +115,9 @@ class ImageRulesEngine:
 
         prompt = (
             f"Professional editorial photography, {matched_visual}, {style}, "
-            f"natural sunlight, depth of field, 35mm lens, clean modern tech workspace, "
-            f"Unsplash style, minimalist, photorealistic. "
-            f"negative prompt: glowing screens, neon, cyberpunk, sci-fi, hacker, "
-            f"text, messy, 3d render, cartoon, digital art"
+            f"natural sunlight, depth of field, 8k resolution, minimalist, photorealistic. "
+            f"negative prompt: people, faces, glowing screens, neon, cyberpunk, text, "
+            f"messy, 3d render, cartoon, desk, computer monitor, keyboard"
         )
 
         logger.info(
