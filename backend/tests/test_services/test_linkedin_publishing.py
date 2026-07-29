@@ -387,8 +387,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
                 "lifecycleState": "PUBLISHED",
                 "content": {
                     "media": {
-                        "id": "urn:li:image:C4E22AQH1234567890",
-                        "title": "AI Generated Visual"
+                        "id": "urn:li:image:C4E22AQH1234567890"
                     }
                 }
             },

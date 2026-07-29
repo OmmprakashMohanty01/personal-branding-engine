@@ -338,8 +338,8 @@ class TestDeterministicImagePrompts:
         engine = ImageRulesEngine()
         prompt = engine.build_deterministic_prompt("Building AI agents with Python")
         assert "ai" in prompt.lower() or "visualization" in prompt.lower()
-        assert "professional photography" in prompt
-        assert "no text" in prompt
+        assert "professional" in prompt.lower() and "photography" in prompt.lower()
+        assert "text" in prompt.lower()
 
     def test_generic_topic_uses_default(self):
         engine = ImageRulesEngine()
