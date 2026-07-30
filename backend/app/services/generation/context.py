@@ -61,7 +61,7 @@ class PipelineContext:
     draft: Optional[ContentDraft] = None
     generated_text: str = ""
     refined_text: str = ""
-    requires_image: bool = False
+    requires_image: bool = True
     image_prompt: Optional[str] = None
     image_url: Optional[str] = None
 

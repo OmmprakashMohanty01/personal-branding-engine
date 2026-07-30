@@ -232,7 +232,7 @@ class ContentGenerationPipeline:
         s15_para = len([p for p in generated_text.split('\n\n') if p.strip()])
         logger.info(f"[TRACE] [POST JSON REPAIR] chars={s15_char} | paras={s15_para} | hash={s15_hash} | end={repr(generated_text[-50:])}")
         
-        context.requires_image = parsed_data.get("requires_image", False)
+        context.requires_image = parsed_data.get("requires_image", True)
         llm_output_metadata = parsed_data.get("metadata", {})
         if not isinstance(llm_output_metadata, dict):
             llm_output_metadata = {}

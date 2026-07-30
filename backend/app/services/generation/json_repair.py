@@ -78,7 +78,7 @@ class JSONRepairStage:
             # Utter fallback: raw text as content
             parsed_data["content_text"] = clean_output
 
-        parsed_data["requires_image"] = requires_img_match.group(1).lower() == "true" if requires_img_match else False
+        parsed_data["requires_image"] = requires_img_match.group(1).lower() == "true" if requires_img_match else True
 
         if img_prompt_match:
             parsed_data["image_prompt"] = img_prompt_match.group(1)

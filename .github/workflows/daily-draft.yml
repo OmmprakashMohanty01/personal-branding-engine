@@ -4,7 +4,17 @@ on:
   # Runs automatically at 02:37 UTC (08:07 AM IST) every day
   # Randomized slightly to avoid GitHub Actions top-of-the-hour queue bottlenecks
   schedule:
-    - cron: '37 2 * * *'
+    # TUESDAY: Posts at 9:00 AM IST (03:30 UTC)
+    - cron: '30 3 * * 2'
+    
+    # WEDNESDAY: Posts at 10:15 AM IST (04:45 UTC)
+    - cron: '45 4 * * 3'
+    
+    # THURSDAY: Posts at 8:45 AM IST (03:15 UTC)
+    - cron: '15 3 * * 4'
+    
+    # FRIDAY: Posts at 11:30 AM IST (06:00 UTC)
+    - cron: '0 6 * * 5'
   workflow_dispatch:
 
 # Ensures only one automation runs at a time, preventing duplicate LinkedIn posts
