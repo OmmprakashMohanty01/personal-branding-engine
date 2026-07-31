@@ -33,11 +33,6 @@ class LinkedInFormatter:
     @staticmethod
     def sanitize_for_linkedin_api(text: str) -> str:
         """
-        LinkedIn's /rest/posts API occasionally truncates strings when it attempts to parse
-        malformed markdown links or mentions (especially parentheses following brackets).
-        This function strips markdown links [text](url) and converts them to `text (url)`
-        to safely pass through LinkedIn's API parsers.
+        No-op sanitizer. Removed regex for stripping parentheses to fix truncation bugs.
         """
-        # Convert [text](url) to text (url)
-        sanitized = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 (\2)', text)
-        return sanitized
+        return text

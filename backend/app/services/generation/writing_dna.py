@@ -21,11 +21,11 @@ logger = logging.getLogger("branding_engine.generation.writing_dna")
 # Hook Strategy Pool
 # ---------------------------------------------------------------------------
 HOOK_STRATEGIES: List[str] = [
-    "State a strong contrarian industry thesis and defend it immediately",
-    "Define a systemic failure in how companies build software today",
-    "Open with a hard macro-economic or team velocity observation",
-    "Challenge a widely accepted management or engineering practice",
-    "State a definitive business impact of a specific technical choice",
+    "start with a lowercase intrusive thought about a contrarian industry thesis",
+    "start with a lowercase realization about a systemic failure in software",
+    "start with a lowercase, raw mid-development observation about team velocity",
+    "start with a lowercase intrusive thought challenging a widely accepted practice",
+    "start with a lowercase realization about the business impact of a technical choice",
 ]
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,22 @@ class WritingDNAEngine:
         Returns:
             A WritingDNA instance with the selected combination.
         """
-        hook = self._pick_avoiding(HOOK_STRATEGIES, recent_hooks)
+        import datetime
+        day_of_week = datetime.datetime.utcnow().weekday()
+        day_themes = {
+            0: "Contrarian insight",
+            1: "Technical deep dive",
+            2: "Story + lesson",
+            3: "Data/statistic/opinion",
+            4: "Career/Prediction",
+            5: "Build in public / Project update",
+            6: "Reflection / Rest"
+        }
+        theme = day_themes.get(day_of_week, "General insight")
+
+        base_hook = self._pick_avoiding(HOOK_STRATEGIES, recent_hooks)
+        hook = f"[{theme}] {base_hook}"
+        
         ending = self._pick_avoiding(ENDING_STRATEGIES, recent_endings)
         rhythm = random.choice(PARAGRAPH_RHYTHMS)
 

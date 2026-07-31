@@ -65,7 +65,16 @@ Write with this specific goal and audience in mind. The reader should walk away 
 WRITING_DNA_TEMPLATE = """\
 Writing DNA — follow these precisely:
 
-HOOK: {{ writing_dna.hook_strategy }}
+THE "ANTI-AI" STRUCTURE:
+Every post must follow this natural flow:
+1. Hook (1-2 lines, no statistics like "87% of companies...")
+2. Short story / What happened
+3. What I learned
+4. Why it matters
+5. One closing thought (e.g., "I'm curious whether other engineers have seen the same trend.")
+
+HOOK THEME & STRATEGY:
+{{ writing_dna.hook_strategy }}
 Use this approach to open the post. Do NOT default to a generic opener.
 
 ENDING: {{ writing_dna.ending_strategy }}
@@ -73,16 +82,19 @@ Close the post using this approach. Do NOT default to a generic CTA.
 
 PARAGRAPH RHYTHM & STRUCTURE:
 {{ writing_dna.paragraph_rhythm }}
-No more "bro-etry" (single-sentence paragraphs stacked on top of each other). Use standard, concise paragraph structures. Never use identical paragraph lengths. Mix naturally.
+Vary Paragraph Lengths: Force the use of a mix of one-line thoughts, short sentences, and longer context paragraphs. Completely ban uniform, perfect paragraph sizing.
 
 TONE & STYLE RULES:
-- The voice must be authoritative, brief, pragmatic, and highly confident. Write like a C-Suite executive stating industry facts.
-- Use declarative sentences. Avoid passive voice and uncertain language ("I think", "maybe").
+- HEAVY PENALTY FOR FORMAL ESSAYS: Do not write polished, formal essays (e.g., "Engineering teams wasting capital..."). The tone must be raw and unstructured.
+- ALWAYS start posts with a lowercase, intrusive thought (e.g., "so i spent 2 hours debugging this today...") instead of a capitalized hook.
+- Embrace Uncertainty (Hedging): The persona must sound like a real engineer, not an omniscient AI. Force the use of phrases like "I might be wrong, but...", "I could be wrong, but...", "So far, this has worked better for me," "I have a feeling...", or "Maybe I'm wrong, but..."
+- Show Tiny Imperfections: Include mid-development mistakes and realistic troubleshooting narratives. Examples: "I spent 2 hours debugging this today", "I actually assumed the opposite at first," "I had to reread the documentation twice," or "I almost removed this feature before realizing the bug was elsewhere."
+- Conversational Transitions: Ban words like "Furthermore," "In conclusion," or "Moreover." Replace them with: "Then something interesting happened," "At first...", or "Looking back..."
 - BAN JUNIOR NETWORKING: Strictly ban phrases like "Let's connect", "What are your thoughts?", "Link in bio", or "Follow me for more".
 - BAN PORTFOLIOS: Never mention or link to personal portfolios or personal websites.
 - BAN MELODRAMA: Never use phrases like "at 2 AM my terminal screamed," "that painful night taught me," or "massive mental shift." Stop trying to sound like a motivational speaker.
 - BAN CLICHÉS: Never use "In the ever-evolving landscape of...", "Remember, real engineering is about...", or "What are your thoughts? Let me know below!"
-- AVOID THESE WORDS: delve, unlock, leverage, synergy, game-changer, paradigm shift, in today's fast-paced world.
+- AVOID THESE WORDS: delve, unlock, leverage, synergy, game-changer, paradigm shift, in today's fast-paced world, furthermore, in conclusion, moreover.
 
 EVIDENCE RULE:
 Every post MUST contain at least one concrete detail — a real metric, tool, \

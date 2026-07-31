@@ -1,20 +1,20 @@
 name: Daily Brand Draft Automation
 
 on:
-  # Runs automatically at 02:37 UTC (08:07 AM IST) every day
-  # Randomized slightly to avoid GitHub Actions top-of-the-hour queue bottlenecks
+  # Runs automatically at specific IST times depending on the day
   schedule:
-    # TUESDAY: Posts at 9:00 AM IST (03:30 UTC)
-    - cron: '30 3 * * 2'
-    
-    # WEDNESDAY: Posts at 10:15 AM IST (04:45 UTC)
-    - cron: '45 4 * * 3'
-    
-    # THURSDAY: Posts at 8:45 AM IST (03:15 UTC)
-    - cron: '15 3 * * 4'
-    
-    # FRIDAY: Posts at 11:30 AM IST (06:00 UTC)
-    - cron: '0 6 * * 5'
+    # MONDAY: 8:30 AM IST (03:00 UTC) - Contrarian insight
+    - cron: '0 3 * * 1'
+    # TUESDAY: 11:30 AM IST (06:00 UTC) - Technical deep dive
+    - cron: '0 6 * * 2'
+    # WEDNESDAY: 8:30 AM IST (03:00 UTC) - Story + lesson
+    - cron: '0 3 * * 3'
+    # THURSDAY: 11:30 AM IST (06:00 UTC) - Data/statistic/opinion
+    - cron: '0 6 * * 4'
+    # FRIDAY: 8:30 AM IST (03:00 UTC) - Career/Prediction
+    - cron: '0 3 * * 5'
+    # SATURDAY: 10:30 AM IST (05:00 UTC) - Build in public / Project update
+    - cron: '0 5 * * 6'
   workflow_dispatch:
 
 # Ensures only one automation runs at a time, preventing duplicate LinkedIn posts
