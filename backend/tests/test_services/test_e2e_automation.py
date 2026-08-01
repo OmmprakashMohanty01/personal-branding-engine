@@ -48,7 +48,7 @@ def mock_db_session():
         content_text="E2E test content",
         status="DRAFT",
         generated_at=datetime.datetime.now(datetime.timezone.utc),
-        llm_metadata={"requires_image": False}
+        llm_metadata={"requires_image": True, "image_url": "https://example.com/img.jpg"}
     )
     mock_draft_result = MagicMock()
     mock_draft_result.scalars().first.return_value = mock_draft
@@ -80,7 +80,7 @@ async def test_generate_daily_atomic_success(mock_publish, mock_run, mock_get_db
         content_text="E2E test content",
         status="DRAFT",
         generated_at=datetime.datetime.now(datetime.timezone.utc),
-        llm_metadata={}
+        llm_metadata={"image_url": "https://example.com/img.jpg"}
     )
     mock_run.return_value = mock_draft
     
@@ -150,7 +150,7 @@ async def test_generate_daily_atomic_rollback_on_publish_failure(mock_publish, m
         content_text="E2E test content",
         status="DRAFT",
         generated_at=datetime.datetime.now(datetime.timezone.utc),
-        llm_metadata={}
+        llm_metadata={"image_url": "https://example.com/img.jpg"}
     )
     mock_run.return_value = mock_draft
     

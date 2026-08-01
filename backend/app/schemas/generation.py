@@ -36,7 +36,7 @@ class LLMGenerationOutput(BaseModel):
         description="The fully formatted post text",
     )
     requires_image: bool = Field(
-        False,
+        True,
         description="Whether the post needs an accompanying image",
     )
     metadata: Dict[str, Any] = Field(
