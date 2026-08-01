@@ -298,7 +298,7 @@ async def test_automation_daily_resumption(
         id="test-draft-resume",
         content_text="This is a recovered post.",
         status="DRAFT",
-        llm_metadata={}
+        llm_metadata={"requires_image": True}
     )
     mock_check_idempotency.return_value = existing_draft
     

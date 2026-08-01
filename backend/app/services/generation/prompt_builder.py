@@ -30,6 +30,7 @@ from app.services.generation.prompt_templates import (
     CLAIM_CATEGORIES_TEMPLATE,
     GITHUB_LINK_RULES_TEMPLATE,
     GROUNDING_CONTRACT_TEMPLATE,
+    IMAGE_RULES_TEMPLATE,
 )
 from app.services.generation.writing_dna import WritingDNA, WritingDNAEngine, ContentStrategy
 from app.services.generation.author_knowledge import AuthorKnowledgeService, AuthorContext
@@ -143,8 +144,8 @@ class PromptBuilder:
         # GROUNDING CONTRACT
         sections.append(GROUNDING_CONTRACT_TEMPLATE)
 
-        # IMAGE RULES removed: image prompts are now deterministic (P5).
-        # The LLM no longer generates image prompts.
+        # IMAGE RULES
+        sections.append(IMAGE_RULES_TEMPLATE)
 
         # SELF-CHECK
         sections.append(SELF_CHECK_TEMPLATE)

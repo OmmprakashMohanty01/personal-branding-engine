@@ -21,11 +21,11 @@ logger = logging.getLogger("branding_engine.generation.writing_dna")
 # Hook Strategy Pool
 # ---------------------------------------------------------------------------
 HOOK_STRATEGIES: List[str] = [
-    "start with a lowercase intrusive thought about a contrarian industry thesis",
-    "start with a lowercase realization about a systemic failure in software",
-    "start with a lowercase, raw mid-development observation about team velocity",
-    "start with a lowercase intrusive thought challenging a widely accepted practice",
-    "start with a lowercase realization about the business impact of a technical choice",
+    "start with an intrusive thought about a contrarian industry thesis",
+    "start with a realization about a systemic failure in software",
+    "start with a raw mid-development observation about team velocity",
+    "start with an intrusive thought challenging a widely accepted practice",
+    "start with a realization about the business impact of a technical choice",
 ]
 
 # ---------------------------------------------------------------------------

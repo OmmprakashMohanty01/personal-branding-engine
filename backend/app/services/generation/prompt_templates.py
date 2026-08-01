@@ -86,7 +86,7 @@ Vary Paragraph Lengths: Force the use of a mix of one-line thoughts, short sente
 
 TONE & STYLE RULES:
 - HEAVY PENALTY FOR FORMAL ESSAYS: Do not write polished, formal essays (e.g., "Engineering teams wasting capital..."). The tone must be raw and unstructured.
-- ALWAYS start posts with a lowercase, intrusive thought (e.g., "so i spent 2 hours debugging this today...") instead of a capitalized hook.
+- Always use perfect grammar and standard capitalization (e.g., start the first word of the post with a capital letter). Achieve a casual, 'build-in-public' tone strictly through narrative structure and word choice, NEVER by using incorrect capitalization, typos, or unprofessional formatting.
 - Embrace Uncertainty (Hedging): The persona must sound like a real engineer, not an omniscient AI. Force the use of phrases like "I might be wrong, but...", "I could be wrong, but...", "So far, this has worked better for me," "I have a feeling...", or "Maybe I'm wrong, but..."
 - Show Tiny Imperfections: Include mid-development mistakes and realistic troubleshooting narratives. Examples: "I spent 2 hours debugging this today", "I actually assumed the opposite at first," "I had to reread the documentation twice," or "I almost removed this feature before realizing the bug was elsewhere."
 - Conversational Transitions: Ban words like "Furthermore," "In conclusion," or "Moreover." Replace them with: "Then something interesting happened," "At first...", or "Looking back..."
@@ -200,6 +200,13 @@ If uncertain, choose honesty over creativity."""
 
 
 # ---------------------------------------------------------------------------
+# IMAGE RULES
+# ---------------------------------------------------------------------------
+IMAGE_RULES_TEMPLATE = """\
+IMAGE IDEA:
+Generate a purely abstract, geometric, or architectural visual metaphor for the post. NEVER describe a person, a screen, a computer, or an office."""
+
+# ---------------------------------------------------------------------------
 # SELF-CHECK / INTERNAL REVISION
 # ---------------------------------------------------------------------------
 SELF_CHECK_TEMPLATE = """\
@@ -226,7 +233,8 @@ OUTPUT FORMAT — respond with ONLY this JSON (no wrapper text, no markdown fenc
     "post_type": "<one of: insight, tutorial, story, opinion, review, lesson, experiment>",
     "hook_style": "<the hook approach you actually used>",
     "audience": "<the primary audience this post targets>",
-    "goal": "<the primary goal of this post>"
+    "goal": "<the primary goal of this post>",
+    "image_idea": "<the visual metaphor you generated>"
   }
 }"""
 

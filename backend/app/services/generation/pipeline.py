@@ -238,13 +238,11 @@ class ContentGenerationPipeline:
         if not isinstance(llm_output_metadata, dict):
             llm_output_metadata = {}
 
-        # P2: Deterministic image prompt — override LLM-generated image_prompt
-        # The LLM's requires_image flag is respected, but the actual visual
-        # description is fully controlled by ImageRulesEngine.
+        # P2: Wrap LLM image idea in strict deterministic wrapper
         if context.requires_image:
-            post_type = llm_output_metadata.get("post_type", "insight")
+            image_idea = llm_output_metadata.get("image_idea", context.topic)
             context.image_prompt = self.image_rules_engine.build_deterministic_prompt(
-                topic=context.topic, post_type=post_type
+                image_idea=image_idea
             )
         else:
             context.image_prompt = None

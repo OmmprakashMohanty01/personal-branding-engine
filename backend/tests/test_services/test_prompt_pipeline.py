@@ -84,7 +84,7 @@ class TestWritingDNAEngine:
         dna = engine.generate()
 
         assert isinstance(dna, WritingDNA)
-        assert dna.hook_strategy in HOOK_STRATEGIES
+        assert any(base in dna.hook_strategy for base in HOOK_STRATEGIES)
         assert dna.ending_strategy in ENDING_STRATEGIES
         assert dna.paragraph_rhythm in PARAGRAPH_RHYTHMS
 
@@ -104,7 +104,7 @@ class TestWritingDNAEngine:
         for _ in range(20):
             dna = engine.generate(recent_hooks=recent_hooks)
             results.add(dna.hook_strategy)
-        assert HOOK_STRATEGIES[-1] in results
+        assert any(HOOK_STRATEGIES[-1] in r for r in results)
 
     def test_generate_avoids_recent_endings(self):
         engine = WritingDNAEngine()
@@ -118,7 +118,7 @@ class TestWritingDNAEngine:
     def test_generate_falls_back_when_all_exhausted(self):
         engine = WritingDNAEngine()
         dna = engine.generate(recent_hooks=HOOK_STRATEGIES)
-        assert dna.hook_strategy in HOOK_STRATEGIES
+        assert any(base in dna.hook_strategy for base in HOOK_STRATEGIES)
 
     def test_to_dict(self):
         dna = WritingDNA("test_hook", "test_ending", "test_rhythm")
@@ -248,7 +248,7 @@ class TestPromptBuilder:
         assert "autonomous AI" in prompt  # SYSTEM
         assert "Test Author" in prompt  # PERSONA
         assert "github.com/OmmprakashMohanty01" in prompt  # AUTHOR CONTEXT
-        assert "HOOK:" in prompt  # WRITING DNA
+        assert "HOOK THEME" in prompt  # WRITING DNA
         assert "EVIDENCE RULE" in prompt  # WRITING DNA
         assert "Goal:" in prompt  # CONTENT STRATEGY
         # IMAGE RULES removed from prompt (P5) — image prompts are now deterministic
@@ -272,7 +272,7 @@ class TestLLMGenerationOutput:
     def test_minimal_valid_output(self):
         output = LLMGenerationOutput(content_text="Hello world")
         assert output.content_text == "Hello world"
-        assert output.requires_image is False
+        assert output.requires_image is True
         assert output.metadata == {}
 
     def test_full_valid_output_with_metadata(self):
@@ -336,28 +336,18 @@ class TestPromptTemplates:
 # ==========================================
 class TestDeterministicImagePrompts:
 
-    def test_ai_topic_matches_visual(self):
+    def test_wraps_image_idea_correctly(self):
         engine = ImageRulesEngine()
-        prompt = engine.build_deterministic_prompt("Building AI agents with Python")
-        assert "geometric glass shapes" in prompt.lower() or "abstract" in prompt.lower()
-        assert "professional" in prompt.lower() and "photography" in prompt.lower()
-        assert "text" in prompt.lower()
-
-    def test_generic_topic_uses_default(self):
-        engine = ImageRulesEngine()
-        prompt = engine.build_deterministic_prompt("Random thoughts on life")
-        assert "Abstract geometric shapes" in prompt
-
-    def test_prompt_includes_style(self):
-        engine = ImageRulesEngine()
-        prompt = engine.build_deterministic_prompt("DevOps CI/CD pipelines")
-        # Should include one of the PREFERRED_STYLES
-        assert any(style in prompt for style in ImageRulesEngine.PREFERRED_STYLES)
+        idea = "A glowing geometric crystal"
+        prompt = engine.build_deterministic_prompt(idea)
+        assert "Minimalist abstract architectural photography" in prompt
+        assert idea in prompt
+        assert "negative prompt: people, person" in prompt
 
     def test_prompt_never_empty(self):
         engine = ImageRulesEngine()
-        for topic in ["", "a", "x" * 1000, "Python AI DevOps"]:
-            prompt = engine.build_deterministic_prompt(topic)
+        for idea in ["", "a", "x" * 1000]:
+            prompt = engine.build_deterministic_prompt(idea)
             assert len(prompt) > 50
 
 

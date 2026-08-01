@@ -105,7 +105,7 @@ class TestRetryPolicy:
 class TestJSONRepairStage:
 
     def test_clean_json_parsed_unchanged(self):
-        raw = '{"content_text": "Hello", "requires_image": false}'
+        raw = '{"content_text": "Hello", "requires_image": true}'
         parsed, was_repaired = JSONRepairStage.repair(raw)
         assert parsed["content_text"] == "Hello"
         assert was_repaired is False
