@@ -9,6 +9,7 @@ not illustrate it literally.
 """
 
 import logging
+from typing import Optional, List
 
 logger = logging.getLogger("branding_engine.generation.image_rules")
 
@@ -17,56 +18,51 @@ class ImageRulesEngine:
     """Provides strict image prompt constraints for the generation pipeline."""
 
     PREFERRED_STYLES = [
-        "Corporate editorial photography",
-        "Technology magazine cover",
-        "Minimal composition",
-        "Realistic office",
-        "Professional photography",
-        "Natural lighting",
-        "Glass office",
-        "Developer workspace",
-        "Server racks",
-        "Clean UI",
-        "Modern architecture",
-        "Soft blue palette",
-        "Business magazine quality",
+        "Bright, vibrant 3D isometric illustration",
+        "Modern tech startup style",
+        "Clean white background",
+        "Colorful data visualization concept",
+        "Highly detailed, 8k",
+        "Modular software architecture blocks",
+        "Vibrant data pipelines and workflow nodes",
+        "Clean geometric composition",
+        "Soft colorful gradients",
     ]
 
     FORBIDDEN_ELEMENTS = [
+        "dark",
+        "moody",
+        "concrete",
+        "empty rooms",
         "people",
         "faces",
-        "glowing screens",
-        "neon",
-        "cyberpunk",
         "text",
+        "words",
         "messy",
-        "3d render",
-        "cartoon",
-        "desk",
-        "computer monitor",
-        "keyboard",
+        "cyberpunk",
+        "monochrome",
     ]
 
     # Deterministic topic-to-visual mapping for image prompt generation.
     # Each key is matched as a substring against the topic (case-insensitive).
     TOPIC_VISUAL_MAP = {
-        "architecture": "Minimalist brutalist architecture, intersecting concrete lines",
-        "system": "Minimalist brutalist architecture, intersecting concrete lines",
-        "data": "Abstract geometric glass shapes refracting light",
-        "ai": "Abstract geometric glass shapes refracting light",
-        "machine learning": "Symmetrical patterns in polished black marble",
-        "leadership": "A solitary modern chess piece on a clean marble table",
-        "management": "A solitary modern chess piece on a clean marble table",
-        "python": "Clean interlocking geometric steel structures",
-        "cloud": "Vast empty modern concrete gallery with natural skylight",
-        "devops": "Precise mechanical clockwork gears in monochrome",
-        "security": "Heavy steel vault door mechanism, macro photography",
-        "startup": "A single healthy bonsai tree on a minimal white pedestal",
-        "automation": "Perfectly aligned dominoes in a white studio space",
-        "testing": "Symmetrical reflection on a perfectly still pool of water",
+        "architecture": "Bright isometric 3D modular software architecture blocks connected by vibrant data streams",
+        "system": "Bright isometric 3D system architecture blocks connected with colorful data paths",
+        "data": "Vibrant isometric 3D colorful database blocks, data cubes, and analytics flowcharts",
+        "ai": "Bright colorful isometric 3D neural network layers and data streams",
+        "machine learning": "Vibrant isometric 3D model training pipelines and colorful data matrices",
+        "leadership": "Bright isometric 3D tech strategy roadmap with colorful milestone blocks",
+        "management": "Bright isometric 3D engineering dashboard and colorful process workflow",
+        "python": "Bright isometric 3D Python code blocks, algorithms, and data structures",
+        "cloud": "Bright isometric 3D cloud server infrastructure with colorful data pipes",
+        "devops": "Vibrant isometric 3D CI/CD pipeline loop with colorful gear modules",
+        "security": "Bright isometric 3D glowing shield protecting modular data vaults",
+        "startup": "Bright isometric 3D launchpad with colorful rocket and growth charts",
+        "automation": "Vibrant isometric 3D automated robotic conveyor routing colorful data packets",
+        "testing": "Bright isometric 3D quality assurance checklist and testing modules",
     }
 
-    DEFAULT_VISUAL = "Abstract geometric shapes casting sharp shadows in natural light"
+    DEFAULT_VISUAL = "Bright isometric 3D tech concept with colorful geometric modules and data visualization"
 
     def get_rules(self) -> str:
         """Return the complete image rules string for template injection.
@@ -86,23 +82,40 @@ class ImageRulesEngine:
             f"{forbidden}"
         )
 
-    def build_deterministic_prompt(self, image_idea: str) -> str:
-        """Wrap the LLM image idea in a strict abstract visual wrapper.
+    def build_deterministic_prompt(
+        self,
+        image_idea: str = "",
+        topic: Optional[str] = None,
+    ) -> str:
+        """Wrap the LLM image idea or topic in a bright, vibrant isometric 3D visual wrapper.
 
         Args:
             image_idea: The visual metaphor generated by the LLM (or topic fallback).
+            topic: Optional topic string if image_idea is not supplied directly.
 
         Returns:
             A complete image generation prompt string.
         """
-        prefix = "Minimalist abstract architectural photography, clean geometric lines, high-end editorial style, natural sunlight, conceptual metaphor for "
-        negative = "negative prompt: people, person, human, face, cyberpunk, glowing screens, neon, computer, keyboard, desk, hacker, text, words, 3d render, cartoon"
+        idea = image_idea.strip() if image_idea else ""
+        if not idea and topic:
+            topic_lower = topic.lower()
+            for key, visual in self.TOPIC_VISUAL_MAP.items():
+                if key in topic_lower:
+                    idea = visual
+                    break
+            if not idea:
+                idea = self.DEFAULT_VISUAL
+        elif not idea:
+            idea = self.DEFAULT_VISUAL
 
-        prompt = f"{prefix}{image_idea}. {negative}"
+        prefix = "Bright, vibrant 3D isometric illustration, modern tech startup style, clean white background, colorful data visualization concept, highly detailed, 8k"
+        negative = "--no dark, moody, concrete, empty rooms, people, faces, text, words"
+
+        prompt = f"{prefix}, conceptual metaphor for {idea} {negative}"
 
         logger.info(
-            f"[IMAGE RULES] Abstract prompt built",
-            extra={"image_idea": image_idea, "prompt_length": len(prompt)},
+            f"[IMAGE RULES] Bright isometric prompt built",
+            extra={"image_idea": idea, "prompt_length": len(prompt)},
         )
 
         return prompt

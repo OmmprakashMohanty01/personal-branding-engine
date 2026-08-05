@@ -39,15 +39,24 @@ ENDING_STRATEGIES: List[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Paragraph Rhythm Patterns
+# Paragraph Rhythm Patterns (Strict max 3 sentences per paragraph block)
 # ---------------------------------------------------------------------------
 PARAGRAPH_RHYTHMS: List[str] = [
-    "Use this rhythm: 1-sentence → 3-sentence → 2-sentence → 4-sentence → 1-sentence",
+    "Use this rhythm: 1-sentence → 3-sentence → 2-sentence → 3-sentence → 1-sentence",
     "Use this rhythm: 2-sentence → 1-sentence → 3-sentence → 1-sentence → 2-sentence",
     "Use this rhythm: 3-sentence → 1-sentence → 2-sentence → 3-sentence → 1-sentence",
-    "Use this rhythm: 1-sentence → 4-sentence → 1-sentence → 2-sentence → 1-sentence",
+    "Use this rhythm: 1-sentence → 3-sentence → 1-sentence → 2-sentence → 1-sentence",
     "Use this rhythm: 2-sentence → 3-sentence → 1-sentence → 1-sentence → 3-sentence",
-    "Use this rhythm: 4-sentence → 1-sentence → 1-sentence → 3-sentence → 2-sentence",
+    "Use this rhythm: 3-sentence → 1-sentence → 1-sentence → 3-sentence → 2-sentence",
+]
+
+# ---------------------------------------------------------------------------
+# Strict Physical Formatting Rules
+# ---------------------------------------------------------------------------
+FORMATTING_RULES: List[str] = [
+    "You are strictly forbidden from writing paragraphs longer than 3 sentences.",
+    "You must use carriage returns (double spacing) between every single thought.",
+    "Whenever you list more than two items or concepts, you MUST use bullet points.",
 ]
 
 # ---------------------------------------------------------------------------

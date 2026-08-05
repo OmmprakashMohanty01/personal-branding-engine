@@ -82,7 +82,12 @@ Close the post using this approach. Do NOT default to a generic CTA.
 
 PARAGRAPH RHYTHM & STRUCTURE:
 {{ writing_dna.paragraph_rhythm }}
-Vary Paragraph Lengths: Force the use of a mix of one-line thoughts, short sentences, and longer context paragraphs. Completely ban uniform, perfect paragraph sizing.
+Vary Paragraph Lengths: Force the use of a mix of one-line thoughts, short sentences, and concise context paragraphs. Completely ban uniform, dense paragraph blocks.
+
+STRICT FORMATTING & SCANNABILITY CONSTRAINTS:
+- You are strictly forbidden from writing paragraphs longer than 3 sentences. Maximum 1-3 sentences per paragraph block.
+- You must use carriage returns (double spacing) between every single thought.
+- Whenever you list more than two items or concepts, you MUST use bullet points.
 
 TONE & STYLE RULES:
 - HEAVY PENALTY FOR FORMAL ESSAYS: Do not write polished, formal essays (e.g., "Engineering teams wasting capital..."). The tone must be raw and unstructured.
@@ -107,7 +112,7 @@ is incomplete or wrong. Support with reasoning. Avoid clickbait framing.
 
 STRUCTURAL RULES:
 - No fixed templates. Do NOT default to "hook → 3 bullets → CTA".
-- No perfect bullet parallelism — vary syntactic shapes.
+- Whenever listing more than two items or concepts, use bullet points. Vary syntactic shapes.
 - Maximum ONE emoji per post, only if strictly necessary.
 - Stay in authentic first-person "I" voice throughout.
 - Never end with a question. End with a strong concluding thesis."""
@@ -204,7 +209,7 @@ If uncertain, choose honesty over creativity."""
 # ---------------------------------------------------------------------------
 IMAGE_RULES_TEMPLATE = """\
 IMAGE IDEA:
-Generate a purely abstract, geometric, or architectural visual metaphor for the post. NEVER describe a person, a screen, a computer, or an office."""
+Generate a bright, friendly, and colorful data or software visual metaphor for the post (e.g., modular isometric 3D cubes, vibrant data pipelines, interlocking colorful algorithms). NEVER describe dark concrete rooms, people, faces, text, words, or cluttered offices."""
 
 # ---------------------------------------------------------------------------
 # SELF-CHECK / INTERNAL REVISION
@@ -252,13 +257,14 @@ RULES:
 3. NO generic endings: "What do you think?", "Thoughts?", "Agree?"
 4. NO CTAs or PORTFOLIOS: Do not include "Let's connect", "Link in bio", or portfolio links.
 5. NO FAKE LINKS. If referencing code, use ONLY: https://github.com/OmmprakashMohanty01
-6. Vary paragraph and sentence lengths. Short punches mixed with longer analysis.
+6. Vary paragraph and sentence lengths. Short punches mixed with concise analysis.
 7. Sentence fragments and starting with But, And, So are encouraged.
 8. Maximum ONE emoji per post.
-9. Output 100% plain text. FORBIDDEN: asterisks, hashes, markdown bullets.
-10. Short scannable paragraphs. Max 3 sentences per paragraph.
-11. Double line breaks (\\n\\n) between every paragraph.
-12. Every post must contain at least one concrete detail (metric, tool, error, date)."""
+9. Output 100% plain text. FORBIDDEN: asterisks, hashes.
+10. Short scannable paragraphs. You are strictly forbidden from writing paragraphs longer than 3 sentences.
+11. Double line breaks (\\n\\n) between every single thought.
+12. Whenever you list more than two items or concepts, you MUST use bullet points.
+13. Every post must contain at least one concrete detail (metric, tool, error, date)."""
 
 # ---------------------------------------------------------------------------
 # USER PROMPT (rendered with Jinja2 — expects `topic`, optional `feedback`)

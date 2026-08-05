@@ -214,14 +214,14 @@ class TestImageRulesEngine:
     def test_rules_contain_preferred_attributes(self):
         engine = ImageRulesEngine()
         rules = engine.get_rules()
-        assert "Corporate editorial photography" in rules
-        assert "Business magazine quality" in rules
+        assert "Bright, vibrant 3D isometric illustration" in rules
+        assert "Clean white background" in rules
 
     def test_rules_contain_forbidden_elements(self):
         engine = ImageRulesEngine()
         rules = engine.get_rules()
-        assert "cyberpunk" in rules
-        assert "neon" in rules
+        assert "dark" in rules
+        assert "concrete" in rules
         assert "people" in rules
         assert "faces" in rules
 
@@ -340,9 +340,9 @@ class TestDeterministicImagePrompts:
         engine = ImageRulesEngine()
         idea = "A glowing geometric crystal"
         prompt = engine.build_deterministic_prompt(idea)
-        assert "Minimalist abstract architectural photography" in prompt
+        assert "Bright, vibrant 3D isometric illustration" in prompt
         assert idea in prompt
-        assert "negative prompt: people, person" in prompt
+        assert "--no dark, moody, concrete, empty rooms, people, faces, text, words" in prompt
 
     def test_prompt_never_empty(self):
         engine = ImageRulesEngine()

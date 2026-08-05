@@ -125,8 +125,10 @@ class ImageValidator:
             return
 
         prompt_lower = image_prompt.lower()
+        # Inspect only the positive prompt portion (before negative flags / exclusions)
+        positive_part = re.split(r"--no|negative prompt:", prompt_lower)[0]
         for forbidden in FORBIDDEN_IMAGE_TERMS:
-            if forbidden in prompt_lower:
+            if forbidden in positive_part:
                 result.add_warning(
                     f"Image prompt contains discouraged element: '{forbidden}'."
                 )
