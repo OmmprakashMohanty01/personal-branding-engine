@@ -34,13 +34,9 @@ from app.services.generation.circuit_breaker import CircuitBreaker, execute_with
 from app.services.generation.context import PipelineContext
 from app.services.generation.deduplication import ContentDeduplicationStage
 from app.services.generation.formatters import LinkedInFormatter
-from app.services.generation.image_rules import ImageRulesEngine
-from app.services.generation.image_director import ImageDirector
 from app.services.generation.json_repair import JSONRepairStage
 from app.services.generation.prompt_builder import PromptBuilder
 from app.services.generation.prompt_memory import PromptMemoryService
-from app.services.generation.providers import PollinationsImageProvider, ImagenProvider
-from app.services.generation.image_quality_gate import ImageQualityGate
 from app.services.generation.strategy_selector import StrategySelector
 from app.services.generation.validators import ValidatorRegistry
 from app.services.generation.writing_dna import WritingDNAEngine
@@ -57,11 +53,7 @@ class ContentGenerationPipeline:
         self.json_repair_stage = JSONRepairStage()
         self.validator_registry = ValidatorRegistry()
         self.dedup_stage = ContentDeduplicationStage()
-        self.image_provider = PollinationsImageProvider()
-        self.imagen_provider = ImagenProvider()
         self.linkedin_formatter = LinkedInFormatter()
-        self.image_rules_engine = ImageRulesEngine()
-        self.image_director = ImageDirector()
 
         self.gemini_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
         self.cohere_api_key = settings.COHERE_API_KEY or os.getenv("COHERE_API_KEY")
@@ -241,13 +233,8 @@ class ContentGenerationPipeline:
         if not isinstance(llm_output_metadata, dict):
             llm_output_metadata = {}
 
-        # P2: Wrap LLM image idea using Image Director
-        if context.requires_image:
-            context.image_prompt = await self.image_director.generate_prompt(
-                core_topic=context.topic
-            )
-        else:
-            context.image_prompt = None
+        # The image prompt is no longer used, as we rely on Mermaid diagrams
+        context.image_prompt = None
 
         # Stage 2 removed: Cohere is now only used as a Stage 1 fallback.
         # generated_text goes directly to formatting — no second LLM rewrite.
@@ -331,41 +318,29 @@ class ContentGenerationPipeline:
                 logger.warning(f"[ASSERTION WARNING] Content deduplication flagged similarity score {sim_score:.2f}")
         self._log_stage("DEDUP", context.trace_id, "SUCCESS")
 
-        # 8. Image Generation Stage (if required or configured)
-        self._log_stage("IMAGE_GEN", context.trace_id, "START", f"requires_image={context.requires_image}")
-        if context.requires_image and context.image_prompt:
+        # 8. Diagram Generation Stage
+        mermaid_diagram = parsed_data.get("mermaid_diagram")
+        self._log_stage("DIAGRAM_GEN", context.trace_id, "START", f"has_mermaid={bool(mermaid_diagram)}")
+        if mermaid_diagram:
             img_start = time.time()
             try:
-                # Primary: Google Imagen 3
-                logger.info(f"[IMAGE GENERATION PROMPT] Sending prompt to provider: {context.image_prompt}")
-                logger.info(f"[IMAGE_GEN] Attempting Imagen 3 generation for: {context.image_prompt[:50]}...")
-                img_url = await self.imagen_provider.generate_image(context.image_prompt)
-                
-                # Secondary Fallback: Pollinations (FLUX)
-                if not img_url:
-                    logger.warning("[IMAGE FALLBACK] Imagen provider returned None or timed out. Falling back to Pollinations (FLUX).")
-                    img_url = await self.image_provider.generate_image(context.image_prompt)
-                
-                # Tertiary Fallback: Text-Only
-                if not img_url:
-                    logger.warning("[IMAGE FALLBACK: Text-Only Mode] Both Imagen and Pollinations returned no URL. Degrading to text-only.")
-                    context.image_url = None
-                    context.requires_image = False
+                from app.services.generation.diagram_service import render_mermaid_to_png
+                import base64
+                logger.info(f"[DIAGRAM_GEN] Rendering Mermaid diagram via Kroki")
+                png_bytes = await render_mermaid_to_png(mermaid_diagram)
+                if png_bytes:
+                    b64_str = base64.b64encode(png_bytes).decode('utf-8')
+                    context.image_url = f"data:image/png;base64,{b64_str}"
                 else:
-                    # P4: Image Quality Gate
-                    is_valid, reason = ImageQualityGate.validate(img_url)
-                    if is_valid:
-                        context.image_url = img_url
-                    else:
-                        logger.warning(f"[IMAGE FALLBACK: Text-Only Mode] Image Quality Gate Rejected: {reason}. Falling back to text-only.")
-                        context.image_url = None
-                        context.requires_image = False
+                    logger.warning("[DIAGRAM FALLBACK] Diagram rendering failed. Degrading to text-only.")
+                    context.image_url = None
             except Exception as e:
-                logger.warning(f"[IMAGE FALLBACK: Text-Only Mode] Image generation pipeline threw unexpected error: {e}. Proceeding to publish as standard text-only payload.")
+                logger.warning(f"[DIAGRAM FALLBACK] Diagram generation pipeline threw unexpected error: {e}. Proceeding to publish as standard text-only payload.")
                 context.image_url = None
-                context.requires_image = False
             context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
-        self._log_stage("IMAGE_GEN", context.trace_id, "SUCCESS", f"has_image={context.image_url is not None}")
+        else:
+            context.image_url = None
+        self._log_stage("DIAGRAM_GEN", context.trace_id, "SUCCESS", f"has_image={context.image_url is not None}")
 
         # 9. Store ContentDraft in Database
         self._log_stage("DB_PERSIST", context.trace_id, "START")

@@ -15,8 +15,7 @@ def override_settings(monkeypatch):
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.imagen.ImagenProvider.generate_image", new_callable=AsyncMock)
-@patch("app.services.generation.pipeline.ImageDirector.generate_prompt", new_callable=AsyncMock)
+@patch("app.services.generation.diagram_service.render_mermaid_to_png", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -24,8 +23,7 @@ async def test_automation_daily_success(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
-    mock_generate_prompt,
-    mock_generate_image,
+    mock_render_mermaid,
     mock_execute_with_retry,
     override_settings
 ):
@@ -35,7 +33,7 @@ async def test_automation_daily_success(
     import base64
     jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
     valid_data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
-    mock_generate_image.return_value = valid_data_uri
+    mock_render_mermaid.return_value = b'fake_png_bytes'
     
     # Mock LLM generation. execute_with_retry is used for Gemini/Cohere.
     # We return a dummy object with `.output_text`.
@@ -44,9 +42,8 @@ async def test_automation_daily_success(
             self.output_text = text
             
     mock_execute_with_retry.return_value = MockInteraction(
-        text='{"content_text": "This is a fully generated post ready for publishing.", "metadata": {}, "requires_image": true, "image_prompt": "An image"}'
+        text='{"content_text": "This is a fully generated post ready for publishing.", "metadata": {}, "requires_image": true, "mermaid_diagram": "flowchart TD\\n A-->B"}'
     )
-    mock_generate_prompt.return_value = "Editorial test prompt"
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
@@ -83,15 +80,14 @@ async def test_automation_daily_success(
             assert data["trace_id"] == "run-test-1"
             
             # Verify mocks were called
-            mock_generate_image.assert_called_once()
+            mock_render_mermaid.assert_called_once()
             mock_publish.assert_called_once()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.imagen.ImagenProvider.generate_image", new_callable=AsyncMock)
-@patch("app.services.generation.pipeline.ImageDirector.generate_prompt", new_callable=AsyncMock)
+@patch("app.services.generation.diagram_service.render_mermaid_to_png", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -99,27 +95,24 @@ async def test_full_length_post_integrity(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
-    mock_generate_prompt,
-    mock_generate_image,
+    mock_render_mermaid,
     mock_execute_with_retry,
     override_settings
 ):
     """Test 2: Ensure a 2800-character post is not truncated at any step."""
     long_post_text = "A" * 2800
     
+    mock_render_mermaid.return_value = b'fake_png_bytes'
+    
     class MockInteraction:
         def __init__(self, text):
             self.output_text = text
             
     mock_execute_with_retry.return_value = MockInteraction(
-        text='{"content_text": "' + long_post_text + '", "metadata": {}, "requires_image": true, "image_prompt": "An image"}'
+        text=f'{{"content_text": "{long_post_text}", "metadata": {{"key": "value"}}, "requires_image": true, "mermaid_diagram": "flowchart TD\\n A-->B"}}'
     )
-    mock_generate_prompt.return_value = "Editorial test prompt"
     mock_publish.return_value = "urn:li:share:longpost"
-    import base64
-    jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
-    valid_data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
-    mock_generate_image.return_value = valid_data_uri
+    mock_publish.return_value = "urn:li:share:longpost"
     
     from app.database import get_db
     

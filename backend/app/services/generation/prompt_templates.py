@@ -205,11 +205,14 @@ If uncertain, choose honesty over creativity."""
 
 
 # ---------------------------------------------------------------------------
-# IMAGE RULES
+# DIAGRAM RULES
 # ---------------------------------------------------------------------------
-IMAGE_RULES_TEMPLATE = """\
-IMAGE IDEA:
-Generate a high-end, real-world editorial photography concept for the post (e.g., architectural glass prisms, monolithic granite sculpture, minimalist mechanical engineering). NEVER describe 3D renders, illustrations, isometric cubes, pastel toy rooms, people, faces, text, words, or cluttered offices."""
+DIAGRAM_RULES_TEMPLATE = """\
+DIAGRAM GENERATION:
+You must generate a valid Mermaid.js flowchart (flowchart TD or LR) that accurately reflects the specific technical architecture, pipeline stages, or comparison discussed in the post.
+- Keep diagrams clean and scannable (3 to 7 nodes maximum).
+- Use clear, professional labels with no syntax errors.
+- Do NOT include any dark mode initialization strings (these are injected by the backend)."""
 
 # ---------------------------------------------------------------------------
 # SELF-CHECK / INTERNAL REVISION
@@ -233,13 +236,12 @@ OUTPUT_SCHEMA_TEMPLATE = """\
 OUTPUT FORMAT — respond with ONLY this JSON (no wrapper text, no markdown fences):
 {
   "content_text": "<the fully formatted post text, plain text only, double line breaks between paragraphs>",
-  "requires_image": <true or false>,
+  "mermaid_diagram": "flowchart TD\\n  A[Client Request] --> B[FastAPI Gateway]\\n  B --> C[(PostgreSQL State)]\\n  C --> D[Background Worker]",
   "metadata": {
     "post_type": "<one of: insight, tutorial, story, opinion, review, lesson, experiment>",
     "hook_style": "<the hook approach you actually used>",
     "audience": "<the primary audience this post targets>",
-    "goal": "<the primary goal of this post>",
-    "image_idea": "<the visual metaphor you generated>"
+    "goal": "<the primary goal of this post>"
   }
 }"""
 

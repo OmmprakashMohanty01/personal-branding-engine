@@ -30,12 +30,11 @@ from app.services.generation.prompt_templates import (
     CLAIM_CATEGORIES_TEMPLATE,
     GITHUB_LINK_RULES_TEMPLATE,
     GROUNDING_CONTRACT_TEMPLATE,
-    IMAGE_RULES_TEMPLATE,
+    DIAGRAM_RULES_TEMPLATE,
 )
 from app.services.generation.writing_dna import WritingDNA, WritingDNAEngine, ContentStrategy
 from app.services.generation.author_knowledge import AuthorKnowledgeService, AuthorContext
 from app.services.generation.prompt_memory import PromptMemoryService, MemoryContext
-from app.services.generation.image_rules import ImageRulesEngine
 
 logger = logging.getLogger("branding_engine.generation.prompt_builder")
 
@@ -57,7 +56,6 @@ class PromptBuilder:
         self.writing_dna_engine = WritingDNAEngine()
         self.author_knowledge = AuthorKnowledgeService()
         self.memory_service = PromptMemoryService()
-        self.image_rules_engine = ImageRulesEngine()
 
         # State from the last build — for logging and metadata
         self._last_writing_dna: Optional[WritingDNA] = None
@@ -144,8 +142,8 @@ class PromptBuilder:
         # GROUNDING CONTRACT
         sections.append(GROUNDING_CONTRACT_TEMPLATE)
 
-        # IMAGE RULES
-        sections.append(IMAGE_RULES_TEMPLATE)
+        # DIAGRAM RULES
+        sections.append(DIAGRAM_RULES_TEMPLATE)
 
         # SELF-CHECK
         sections.append(SELF_CHECK_TEMPLATE)
