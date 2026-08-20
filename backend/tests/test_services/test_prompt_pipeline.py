@@ -207,26 +207,36 @@ class TestPromptMemoryService:
 
 
 # ==========================================
-# 4. IMAGE RULES ENGINE TESTS
+# 4. IMAGE DIRECTOR TESTS
 # ==========================================
-class TestImageRulesEngine:
+import pytest
+from unittest.mock import AsyncMock, patch
+from app.services.generation.image_director import ImageDirector
 
-    def test_rules_contain_preferred_attributes(self):
-        engine = ImageRulesEngine()
-        rules = engine.get_rules()
-        assert "Bright, vibrant 3D isometric illustration" in rules
-        assert "Clean white background" in rules
-
-    def test_rules_contain_forbidden_elements(self):
-        engine = ImageRulesEngine()
-        rules = engine.get_rules()
-        assert "dark" in rules
-        assert "concrete" in rules
-        assert "people" in rules
-        assert "faces" in rules
-
-
-# ==========================================
+class TestImageDirector:
+    
+    @pytest.mark.asyncio
+    async def test_image_director_calls_llm(self):
+        mock_provider = AsyncMock()
+        mock_provider.generate.return_value = "Editorial corporate technology photography, mock scene"
+        
+        director = ImageDirector(provider=mock_provider)
+        prompt = await director.generate_prompt("system design")
+        
+        assert "Editorial corporate technology photography" in prompt
+        mock_provider.generate.assert_called_once()
+        
+    @pytest.mark.asyncio
+    async def test_image_director_fallback_on_error(self):
+        mock_provider = AsyncMock()
+        mock_provider.generate.side_effect = Exception("API limit")
+        
+        director = ImageDirector(provider=mock_provider)
+        prompt = await director.generate_prompt("system design")
+        
+        # Should gracefully degrade to default string
+        assert "Editorial corporate technology photography" in prompt
+        assert "minimalist workspaces" in prompt
 # 5. PROMPT BUILDER TESTS
 # ==========================================
 class TestPromptBuilder:
@@ -332,25 +342,8 @@ class TestPromptTemplates:
 
 
 # ==========================================
-# 9. DETERMINISTIC IMAGE PROMPT TESTS
-# ==========================================
-class TestDeterministicImagePrompts:
-
-    def test_wraps_image_idea_correctly(self):
-        engine = ImageRulesEngine()
-        idea = "A glowing geometric crystal"
-        prompt = engine.build_deterministic_prompt(idea)
-        assert "Bright, vibrant 3D isometric illustration" in prompt
-        assert idea in prompt
-        assert "--no dark, moody, concrete, empty rooms, people, faces, text, words" in prompt
-
-    def test_prompt_never_empty(self):
-        engine = ImageRulesEngine()
-        for idea in ["", "a", "x" * 1000]:
-            prompt = engine.build_deterministic_prompt(idea)
-            assert len(prompt) > 50
-
-
+# 9. REMOVED DETERMINISTIC PROMPT TESTS
+# (Image Director handles this now)
 # ==========================================
 # 10. IMAGE QUALITY GATE TESTS
 # ==========================================

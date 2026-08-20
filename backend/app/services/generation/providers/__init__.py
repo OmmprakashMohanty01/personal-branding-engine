@@ -51,11 +51,13 @@ class PollinationsImageProvider(BaseImageProvider):
 
         Returns None on failure to enable graceful text-only post degradation.
         """
+        import random
         encoded_prompt = urllib.parse.quote(prompt.strip())
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        seed = random.randint(1, 1000000)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?model=flux&width=1080&height=1080&nologo=true&seed={seed}"
 
         async def _fetch() -> str:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.get(image_url)
                 if resp.status_code != 200:
                     raise httpx.HTTPStatusError(
@@ -79,3 +81,4 @@ class PollinationsImageProvider(BaseImageProvider):
                 f"Degrading gracefully to text-only mode."
             )
             return None
+from .imagen import ImagenProvider

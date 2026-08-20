@@ -34,7 +34,7 @@ jobs:
         run: uv run pytest tests/
         env:
           # Provide dummy env vars for tests that require them
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENVIRONMENT: test
           CRON_SECRET_KEY: test_secret_key
           GEMINI_API_KEY: mock_gemini_key

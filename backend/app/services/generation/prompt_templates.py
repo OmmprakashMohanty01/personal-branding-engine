@@ -209,7 +209,7 @@ If uncertain, choose honesty over creativity."""
 # ---------------------------------------------------------------------------
 IMAGE_RULES_TEMPLATE = """\
 IMAGE IDEA:
-Generate a bright, friendly, and colorful data or software visual metaphor for the post (e.g., modular isometric 3D cubes, vibrant data pipelines, interlocking colorful algorithms). NEVER describe dark concrete rooms, people, faces, text, words, or cluttered offices."""
+Generate a high-end, real-world editorial photography concept for the post (e.g., architectural glass prisms, monolithic granite sculpture, minimalist mechanical engineering). NEVER describe 3D renders, illustrations, isometric cubes, pastel toy rooms, people, faces, text, words, or cluttered offices."""
 
 # ---------------------------------------------------------------------------
 # SELF-CHECK / INTERNAL REVISION

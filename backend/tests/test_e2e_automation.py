@@ -15,7 +15,8 @@ def override_settings(monkeypatch):
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.PollinationsImageProvider.generate_image", new_callable=AsyncMock)
+@patch("app.services.generation.providers.imagen.ImagenProvider.generate_image", new_callable=AsyncMock)
+@patch("app.services.generation.pipeline.ImageDirector.generate_prompt", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -23,6 +24,7 @@ async def test_automation_daily_success(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
+    mock_generate_prompt,
     mock_generate_image,
     mock_execute_with_retry,
     override_settings
@@ -44,6 +46,7 @@ async def test_automation_daily_success(
     mock_execute_with_retry.return_value = MockInteraction(
         text='{"content_text": "This is a fully generated post ready for publishing.", "metadata": {}, "requires_image": true, "image_prompt": "An image"}'
     )
+    mock_generate_prompt.return_value = "Editorial test prompt"
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
@@ -87,7 +90,8 @@ async def test_automation_daily_success(
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.PollinationsImageProvider.generate_image", new_callable=AsyncMock)
+@patch("app.services.generation.providers.imagen.ImagenProvider.generate_image", new_callable=AsyncMock)
+@patch("app.services.generation.pipeline.ImageDirector.generate_prompt", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -95,6 +99,7 @@ async def test_full_length_post_integrity(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
+    mock_generate_prompt,
     mock_generate_image,
     mock_execute_with_retry,
     override_settings
@@ -109,6 +114,7 @@ async def test_full_length_post_integrity(
     mock_execute_with_retry.return_value = MockInteraction(
         text='{"content_text": "' + long_post_text + '", "metadata": {}, "requires_image": true, "image_prompt": "An image"}'
     )
+    mock_generate_prompt.return_value = "Editorial test prompt"
     mock_publish.return_value = "urn:li:share:longpost"
     import base64
     jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
