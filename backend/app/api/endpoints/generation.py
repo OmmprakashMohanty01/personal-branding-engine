@@ -55,10 +55,8 @@ async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str
     """Generate an image using the Visual Director and Gemini Image API."""
     from app.services.llm_provider import GeminiProvider
     from app.services.generation.image_director import get_visual_director_prompt
-    from app.services.generation.providers.gemini_image import generate_gemini_image
+    from app.services.generation.providers.pollinations import generate_flux_image
     import base64
-    import json
-    import re
 
     logger.info(f"[IMAGE GEN] Requesting Visual Director brief for topic '{topic}'...")
     director_prompt = get_visual_director_prompt(draft_text)
@@ -70,12 +68,10 @@ async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str
         temperature=0.4
     )
     
-    # Strip markdown code blocks if any
-    clean_json_str = re.sub(r'^```(?:json)?|```$', '', director_response.strip(), flags=re.MULTILINE).strip()
-    director_json = json.loads(clean_json_str)
+    flux_prompt = director_response.strip()
     
-    logger.info(f"[IMAGE GEN] Requesting Gemini Image generation...")
-    png_bytes = generate_gemini_image(director_json)
+    logger.info(f"[IMAGE GEN] Requesting Pollinations FLUX Image generation...")
+    png_bytes = await generate_flux_image(flux_prompt)
     
     if not png_bytes:
         raise HTTPException(
