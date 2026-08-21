@@ -3,32 +3,23 @@ import logging
 
 logger = logging.getLogger("branding_engine.generation.diagram_service")
 
-KROKI_URL = "https://kroki.io"
+KROKI_URL = "https://kroki.io/mermaid/png"
 
 async def render_mermaid_to_png(mermaid_code: str) -> bytes | None:
-    """
-    Renders Mermaid syntax to a high-resolution PNG using Kroki.
-    """
-    # Prepend dark mode styling config if not already present
-    init_directive = "%%{init: {'theme': 'dark', 'themeVariables': { 'darkMode': true, 'background': '#0F172A', 'primaryColor': '#1E293B', 'primaryBorderColor': '#38BDF8', 'primaryTextColor': '#F8FAFC', 'lineColor': '#94A3B8'}}}%%\n"
-    
-    full_mermaid = init_directive + mermaid_code.strip()
+    theme_header = "%%{init: {'theme': 'dark', 'themeVariables': {'darkMode': true, 'background': '#0B0F17', 'primaryColor': '#1E293B', 'primaryBorderColor': '#38BDF8', 'primaryTextColor': '#F8FAFC', 'lineColor': '#64748B', 'secondaryColor': '#0F172A', 'tertiaryColor': '#1E293B'}}}%%\\n"
+    full_code = theme_header + mermaid_code.strip()
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            payload = {
-                "diagram_source": full_mermaid,
-                "diagram_type": "mermaid",
-                "output_format": "png"
-            }
-            response = await client.post(
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.post(
                 KROKI_URL,
-                json=payload
+                content=full_code.encode("utf-8"),
+                headers={"Content-Type": "text/plain; charset=utf-8"}
             )
-            if response.status_code == 200:
-                return response.content
-            logger.error(f"[DIAGRAM] Kroki render failed: {response.status_code} - {response.text}")
+            if res.status_code == 200:
+                return res.content
+            logger.error(f"Kroki error: {res.status_code} - {res.text}")
             return None
     except Exception as e:
-        logger.error(f"[DIAGRAM] Error rendering flowchart: {e}")
+        logger.error(f"Diagram rendering exception: {e}")
         return None

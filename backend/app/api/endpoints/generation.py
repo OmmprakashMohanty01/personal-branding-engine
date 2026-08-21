@@ -52,29 +52,36 @@ async def get_live_news():
         ]
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
-    """Generate a base64 encoded professional image using deterministic prompts.
-    
-    Uses ImageRulesEngine for prompt construction (no LLM involved)
-    and PollinationsImageProvider for image fetching with circuit breaker resilience.
-    """
-    from app.services.generation.image_rules import ImageRulesEngine
-    from app.services.generation.providers import PollinationsImageProvider
+    """Generate a Mermaid diagram based on the draft text using Gemini, then render it to PNG."""
+    from app.services.llm_provider import GeminiProvider
+    from app.services.generation.diagram_service import render_mermaid_to_png
+    import base64
+    import re
 
-    engine = ImageRulesEngine()
-    prompt = engine.build_deterministic_prompt(topic=topic)
+    prompt = (
+        "Analyze this technical LinkedIn post and generate a clean, dark-mode Mermaid.js "
+        "flowchart (3–6 nodes) representing the exact architecture, data pipeline, or comparison discussed. "
+        "Return ONLY valid Mermaid syntax starting with 'flowchart TD' or 'flowchart LR'."
+    )
     
-    logger.info(f"[IMAGE GEN] Deterministic prompt for topic '{topic}': {prompt[:80]}...")
+    logger.info(f"[IMAGE GEN] Requesting Mermaid diagram for topic '{topic}'...")
     
-    provider = PollinationsImageProvider()
-    image_data_uri = await provider.generate_image(prompt)
+    provider = GeminiProvider()
+    mermaid_response = await provider.generate(prompt=draft_text, system_instruction=prompt)
     
-    if not image_data_uri:
+    # Strip markdown code blocks if any
+    clean_mermaid = re.sub(r'```(?:mermaid)?\\s*(.*?)\\s*```', r'\\1', mermaid_response, flags=re.DOTALL).strip()
+    
+    png_bytes = await render_mermaid_to_png(clean_mermaid)
+    
+    if not png_bytes:
         raise HTTPException(
             status_code=502,
-            detail="Image generation service is temporarily unavailable. Please try again."
+            detail="Diagram rendering service is temporarily unavailable. Please try again."
         )
     
-    return image_data_uri
+    b64_str = base64.b64encode(png_bytes).decode("utf-8")
+    return f"data:image/png;base64,{b64_str}"
 
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)
