@@ -330,8 +330,19 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setEditorImageUrl(data.image_url);
-        showToast("AI image generated successfully! Remember to Save Changes.", "success");
+        
+        if (data.success === false || data.status === "error") {
+            showToast(data.error || data.message || "Failed to generate image.", "error");
+            return;
+        }
+        
+        // CRITICAL: Update the state with the returned image URL/data
+        if (data.image_url) {
+            setEditorImageUrl(data.image_url);
+            showToast("AI image generated successfully! Remember to Save Changes.", "success");
+        } else {
+            showToast("Image generation succeeded but no image URL was returned.", "error");
+        }
       } else {
         const errorData = await res.json().catch(() => ({}));
         let errMsg = "Failed to generate image.";

@@ -96,14 +96,14 @@ async def generate_image_endpoint(
         topic = payload.topic or "technology branding"
         draft_text = payload.draft_text or ""
         image_url = await generate_metaphorical_image_helper(topic, draft_text)
-        return {"image_url": image_url, "success": True}
+        return {"status": "success", "image_url": image_url, "message": "Image generated successfully"}
             
     except Exception as e:
         logger.error(f"Image generation failed: {e} [RunID: {run_id}]")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content={"image_url": None, "success": False, "error": "Image generation currently unavailable."}
+            content={"status": "error", "image_url": None, "message": "Image generation currently unavailable."}
         )
 
 @router.post("", response_model=DraftResponse)
