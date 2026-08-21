@@ -17,7 +17,7 @@ def override_settings(monkeypatch):
 @pytest.mark.asyncio
 @patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.gemini_image.generate_gemini_image")
+@patch("app.services.generation.providers.pollinations.generate_pollinations_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -96,7 +96,7 @@ async def test_automation_daily_success(
 @pytest.mark.asyncio
 @patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.gemini_image.generate_gemini_image")
+@patch("app.services.generation.providers.pollinations.generate_pollinations_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
