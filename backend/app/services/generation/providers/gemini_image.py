@@ -12,21 +12,23 @@ def generate_gemini_image(director_json: dict) -> bytes | None:
         
         client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         
-        # Using the recommended general-purpose image model
-        result = client.models.generate_images(
+        # Use generate_content for gemini-3.1-flash-image with IMAGE modality
+        response = client.models.generate_content(
             model='gemini-3.1-flash-image',
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="1:1" # or "16:9" if LinkedIn layout prefers
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
             )
         )
         
-        if result.generated_images:
-            return result.generated_images[0].image.image_bytes
-            
+        # Extract the image bytes from the response parts
+        for part in response.candidates[0].content.parts:
+            if part.inline_data:
+                return part.inline_data.data
+                
+        logger.error("[GEMINI IMAGE] No image data found in the response parts.")
         return None
+        
     except Exception as e:
-        logger.error(f"[GEMINI IMAGE] Generation failed: {e}")
+        logger.error(f"[GEMINI IMAGE] Generation failed: {type(e).__name__}: {e}")
         return None
