@@ -218,7 +218,7 @@ class TestImageDirector:
     def test_image_director_prompt_contains_rules(self):
         prompt = get_visual_director_prompt("Test content")
         
-        assert "EXPECTED JSON FORMAT" in prompt
+        assert "OUTPUT FORMAT" in prompt
         assert "Test content" in prompt
         assert "NO fantasy, NO cyberpunk" in prompt
 # 5. PROMPT BUILDER TESTS

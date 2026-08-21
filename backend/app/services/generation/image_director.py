@@ -1,23 +1,22 @@
-import json
-
 def get_visual_director_prompt(post_content: str) -> str:
     return f"""
     Analyze this technical LinkedIn post and act as an Art Director for a premium tech magazine.
-    Output a strictly formatted JSON object dictating the image generation parameters.
+    Your job is to map the technical content into a concrete, professional editorial scene.
+    
+    Category Mappings:
+    - Data/Databases: Modern server infrastructure, clean server racks, fiber optic patch panels, slate and graphite palette.
+    - Developer Workflows: Overhead minimalist workstation, mechanical keyboard, espresso, natural window lighting.
+    - Cloud/DevOps/Scale: Modern brutalist glass and concrete architecture, clean structural angles, dramatic natural daylight.
+    - AI/Systems: Precision enterprise compute clusters, matte industrial finish, subtle status LEDs.
     
     RULES:
-    - Focus on realistic, tangible enterprise infrastructure or modern workspaces.
+    - No In-Image Text Rule: Explicitly forbid text, typography, fake UIs, logos, and labels inside the prompt.
     - NO fantasy, NO cyberpunk, NO robots, NO glowing floating cubes, NO generic AI art.
-    - Palette: Graphite, navy, brushed aluminum, natural light.
     
     POST CONTENT:
     {post_content}
     
-    EXPECTED JSON FORMAT:
-    {{
-      "visual_type": "editorial_technology",
-      "concept": "concise description of the physical scene",
-      "style": "premium technology editorial photography",
-      "avoid": "cyberpunk, glowing neon, robots, text, floating cubes"
-    }}
+    OUTPUT FORMAT:
+    You must output ONLY a clean, prompt string wrapped EXACTLY in this format:
+    Editorial corporate technology photography, {{concrete_scene}}, natural light, 35mm photography, 8k resolution, minimalist composition. DO NOT INCLUDE: text, words, letters, logos, people, faces, 3d render, cartoon, glowing neon, cubes, pastel
     """

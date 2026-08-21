@@ -324,10 +324,9 @@ class ContentGenerationPipeline:
             img_start = time.time()
             try:
                 from app.services.generation.image_director import get_visual_director_prompt
-                from app.services.generation.providers.pollinations import generate_pollinations_image
+                from app.services.generation.providers.pollinations import generate_flux_image
                 from app.services.llm_provider import GeminiProvider
                 import base64
-                import json
 
                 logger.info(f"[IMAGE_GEN] Generating Visual Director brief...")
                 director_prompt = get_visual_director_prompt(context.refined_text)
@@ -338,12 +337,10 @@ class ContentGenerationPipeline:
                     temperature=0.4
                 )
                 
-                # Parse JSON
-                clean_json_str = re.sub(r'^```(?:json)?|```$', '', director_response.strip(), flags=re.MULTILINE).strip()
-                director_json = json.loads(clean_json_str)
+                flux_prompt = director_response.strip()
                 
                 logger.info(f"[IMAGE_GEN] Generating image with Pollinations FLUX API...")
-                png_bytes = await generate_pollinations_image(director_json)
+                png_bytes = await generate_flux_image(flux_prompt)
                 if png_bytes:
                     b64_str = base64.b64encode(png_bytes).decode('utf-8')
                     context.image_url = f"data:image/jpeg;base64,{b64_str}"
