@@ -53,34 +53,18 @@ async def get_live_news():
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
     """Generate an image using the Visual Director and Gemini Image API."""
-    from app.services.llm_provider import GeminiProvider
-    from app.services.generation.image_director import get_visual_director_prompt
-    from app.services.generation.providers.pollinations import generate_flux_image
-    import base64
+    from app.services.generation.router import generate_visuals
 
-    logger.info(f"[IMAGE GEN] Requesting Visual Director brief for topic '{topic}'...")
-    director_prompt = get_visual_director_prompt(draft_text)
+    logger.info(f"[IMAGE GEN] Requesting Visual Router for topic '{topic}'...")
+    image_url = await generate_visuals(draft_text)
     
-    provider = GeminiProvider()
-    director_response = await provider.generate(
-        prompt=draft_text, 
-        system_instruction=director_prompt,
-        temperature=0.4
-    )
-    
-    flux_prompt = director_response.strip()
-    
-    logger.info(f"[IMAGE GEN] Requesting Pollinations FLUX Image generation...")
-    png_bytes = await generate_flux_image(flux_prompt)
-    
-    if not png_bytes:
+    if not image_url:
         raise HTTPException(
             status_code=502,
-            detail="Image generation service is temporarily unavailable. Please try again."
+            detail="Image generation service is temporarily unavailable or Visual Director decided no image was needed."
         )
     
-    b64_str = base64.b64encode(png_bytes).decode("utf-8")
-    return f"data:image/jpeg;base64,{b64_str}"
+    return image_url
 
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)

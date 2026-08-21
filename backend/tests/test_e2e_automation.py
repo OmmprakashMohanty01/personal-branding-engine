@@ -17,12 +17,14 @@ def override_settings(monkeypatch):
 @pytest.mark.asyncio
 @patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.pollinations.generate_flux_image", new_callable=AsyncMock)
+@patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
+@patch("app.services.generation.router.validate_image_bytes", return_value=True)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_automation_daily_success(
     mock_check_idempotency,
+    mock_validate_image_bytes,
     mock_get_account,
     mock_publish,
     mock_render_mermaid,
@@ -34,14 +36,12 @@ async def test_automation_daily_success(
     mock_get_account.return_value = AsyncMock()
     mock_publish.return_value = "urn:li:share:987654321"
     mock_render_mermaid.return_value = b'fake_png_bytes'
-    mock_gemini_generate.return_value = '{"concept": "test", "style": "test", "avoid": "test"}'
+    mock_gemini_generate.return_value = '{"visual_type": "photo", "prompt_or_code": "test"}'
     
-    # 2800 character string ('A' repeated 2800 times)turn_value = '{"concept": "test", "style": "test", "avoid": "test"}'
+    # 2800 character string ('A' repeated 2800 times)
     import base64
     jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
     valid_data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
-    mock_render_mermaid.return_value = b'fake_png_bytes'
-    mock_gemini_generate.return_value = '{"concept": "test", "style": "test", "avoid": "test"}'
     
     # Mock LLM generation. execute_with_retry is used for Gemini/Cohere.
     # We return a dummy object with `.output_text`.
@@ -96,7 +96,7 @@ async def test_automation_daily_success(
 @pytest.mark.asyncio
 @patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.providers.pollinations.generate_flux_image", new_callable=AsyncMock)
+@patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)

@@ -323,29 +323,15 @@ class ContentGenerationPipeline:
         if context.requires_image:
             img_start = time.time()
             try:
-                from app.services.generation.image_director import get_visual_director_prompt
-                from app.services.generation.providers.pollinations import generate_flux_image
-                from app.services.llm_provider import GeminiProvider
-                import base64
-
-                logger.info(f"[IMAGE_GEN] Generating Visual Director brief...")
-                director_prompt = get_visual_director_prompt(context.refined_text)
-                llm = GeminiProvider()
-                director_response = await llm.generate(
-                    prompt=context.refined_text,
-                    system_instruction=director_prompt,
-                    temperature=0.4
-                )
+                from app.services.generation.router import generate_visuals
                 
-                flux_prompt = director_response.strip()
+                logger.info(f"[IMAGE_GEN] Routing visual generation...")
+                image_data_uri = await generate_visuals(context.refined_text, use_fallback=context.telemetry.fallback_provider_used)
                 
-                logger.info(f"[IMAGE_GEN] Generating image with Pollinations FLUX API...")
-                png_bytes = await generate_flux_image(flux_prompt)
-                if png_bytes:
-                    b64_str = base64.b64encode(png_bytes).decode('utf-8')
-                    context.image_url = f"data:image/jpeg;base64,{b64_str}"
+                if image_data_uri:
+                    context.image_url = image_data_uri
                 else:
-                    logger.warning("[IMAGE FALLBACK] Image rendering failed. Degrading to text-only.")
+                    logger.warning("[IMAGE FALLBACK] Visual router returned None. Degrading to text-only.")
                     context.image_url = None
                     context.requires_image = False
             except Exception as e:
