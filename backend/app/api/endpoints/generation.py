@@ -52,36 +52,39 @@ async def get_live_news():
         ]
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
-    """Generate a Mermaid diagram based on the draft text using Gemini, then render it to PNG."""
+    """Generate an image using the Visual Director and Gemini Image API."""
     from app.services.llm_provider import GeminiProvider
-    from app.services.generation.diagram_service import render_mermaid_to_png
+    from app.services.generation.image_director import get_visual_director_prompt
+    from app.services.generation.providers.gemini_image import generate_gemini_image
     import base64
+    import json
     import re
 
-    prompt = (
-        "Analyze this technical LinkedIn post and generate a clean, dark-mode Mermaid.js "
-        "flowchart (3–6 nodes) representing the exact architecture, data pipeline, or comparison discussed. "
-        "Return ONLY valid Mermaid syntax starting with 'flowchart TD' or 'flowchart LR'."
-    )
-    
-    logger.info(f"[IMAGE GEN] Requesting Mermaid diagram for topic '{topic}'...")
+    logger.info(f"[IMAGE GEN] Requesting Visual Director brief for topic '{topic}'...")
+    director_prompt = get_visual_director_prompt(draft_text)
     
     provider = GeminiProvider()
-    mermaid_response = await provider.generate(prompt=draft_text, system_instruction=prompt)
+    director_response = await provider.generate(
+        prompt=draft_text, 
+        system_instruction=director_prompt,
+        temperature=0.4
+    )
     
     # Strip markdown code blocks if any
-    clean_mermaid = re.sub(r'```(?:mermaid)?\\s*(.*?)\\s*```', r'\\1', mermaid_response, flags=re.DOTALL).strip()
+    clean_json_str = re.sub(r'^```(?:json)?|```$', '', director_response.strip(), flags=re.MULTILINE).strip()
+    director_json = json.loads(clean_json_str)
     
-    png_bytes = await render_mermaid_to_png(clean_mermaid)
+    logger.info(f"[IMAGE GEN] Requesting Gemini Image generation...")
+    png_bytes = generate_gemini_image(director_json)
     
     if not png_bytes:
         raise HTTPException(
             status_code=502,
-            detail="Diagram rendering service is temporarily unavailable. Please try again."
+            detail="Image generation service is temporarily unavailable. Please try again."
         )
     
     b64_str = base64.b64encode(png_bytes).decode("utf-8")
-    return f"data:image/png;base64,{b64_str}"
+    return f"data:image/jpeg;base64,{b64_str}"
 
 
 @router.post("/generate-image", status_code=status.HTTP_200_OK)

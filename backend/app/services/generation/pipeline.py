@@ -318,29 +318,47 @@ class ContentGenerationPipeline:
                 logger.warning(f"[ASSERTION WARNING] Content deduplication flagged similarity score {sim_score:.2f}")
         self._log_stage("DEDUP", context.trace_id, "SUCCESS")
 
-        # 8. Diagram Generation Stage
-        mermaid_diagram = parsed_data.get("mermaid_diagram")
-        self._log_stage("DIAGRAM_GEN", context.trace_id, "START", f"has_mermaid={bool(mermaid_diagram)}")
-        if mermaid_diagram:
+        # 8. Image Generation Stage (Visual Director + Gemini Image)
+        self._log_stage("IMAGE_GEN", context.trace_id, "START")
+        if context.requires_image:
             img_start = time.time()
             try:
-                from app.services.generation.diagram_service import render_mermaid_to_png
+                from app.services.generation.image_director import get_visual_director_prompt
+                from app.services.generation.providers.gemini_image import generate_gemini_image
+                from app.services.llm_provider import GeminiProvider
                 import base64
-                logger.info(f"[DIAGRAM_GEN] Rendering Mermaid diagram via Kroki")
-                png_bytes = await render_mermaid_to_png(mermaid_diagram)
+                import json
+
+                logger.info(f"[IMAGE_GEN] Generating Visual Director brief...")
+                director_prompt = get_visual_director_prompt(context.refined_text)
+                llm = GeminiProvider()
+                director_response = await llm.generate(
+                    prompt=context.refined_text,
+                    system_instruction=director_prompt,
+                    temperature=0.4
+                )
+                
+                # Parse JSON
+                clean_json_str = re.sub(r'^```(?:json)?|```$', '', director_response.strip(), flags=re.MULTILINE).strip()
+                director_json = json.loads(clean_json_str)
+                
+                logger.info(f"[IMAGE_GEN] Generating image with Gemini API...")
+                png_bytes = generate_gemini_image(director_json)
                 if png_bytes:
                     b64_str = base64.b64encode(png_bytes).decode('utf-8')
-                    context.image_url = f"data:image/png;base64,{b64_str}"
+                    context.image_url = f"data:image/jpeg;base64,{b64_str}"
                 else:
-                    logger.warning("[DIAGRAM FALLBACK] Diagram rendering failed. Degrading to text-only.")
+                    logger.warning("[IMAGE FALLBACK] Image rendering failed. Degrading to text-only.")
                     context.image_url = None
+                    context.requires_image = False
             except Exception as e:
-                logger.warning(f"[DIAGRAM FALLBACK] Diagram generation pipeline threw unexpected error: {e}. Proceeding to publish as standard text-only payload.")
+                logger.warning(f"[IMAGE FALLBACK] Image generation pipeline threw unexpected error: {e}. Proceeding to publish as standard text-only payload.")
                 context.image_url = None
+                context.requires_image = False
             context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
         else:
             context.image_url = None
-        self._log_stage("DIAGRAM_GEN", context.trace_id, "SUCCESS", f"has_image={context.image_url is not None}")
+        self._log_stage("IMAGE_GEN", context.trace_id, "SUCCESS", f"has_image={context.image_url is not None}")
 
         # 9. Store ContentDraft in Database
         self._log_stage("DB_PERSIST", context.trace_id, "START")

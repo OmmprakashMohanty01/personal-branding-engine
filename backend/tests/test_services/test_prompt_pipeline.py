@@ -211,31 +211,16 @@ class TestPromptMemoryService:
 # ==========================================
 import pytest
 from unittest.mock import AsyncMock, patch
-from app.services.generation.image_director import ImageDirector
+from app.services.generation.image_director import get_visual_director_prompt
 
 class TestImageDirector:
     
-    @pytest.mark.asyncio
-    async def test_image_director_calls_llm(self):
-        mock_provider = AsyncMock()
-        mock_provider.generate.return_value = "Editorial corporate technology photography, mock scene"
+    def test_image_director_prompt_contains_rules(self):
+        prompt = get_visual_director_prompt("Test content")
         
-        director = ImageDirector(provider=mock_provider)
-        prompt = await director.generate_prompt("system design")
-        
-        assert "Editorial corporate technology photography" in prompt
-        mock_provider.generate.assert_called_once()
-        
-    @pytest.mark.asyncio
-    async def test_image_director_fallback_on_error(self):
-        mock_provider = AsyncMock()
-        mock_provider.generate.side_effect = Exception("API limit")
-        
-        director = ImageDirector(provider=mock_provider)
-        prompt = await director.generate_prompt("system design")
-        
-        # Should gracefully degrade to default string
-        assert "Editorial corporate technology photography" in prompt
+        assert "EXPECTED JSON FORMAT" in prompt
+        assert "Test content" in prompt
+        assert "NO fantasy, NO cyberpunk" in prompt
 # 5. PROMPT BUILDER TESTS
 # ==========================================
 class TestPromptBuilder:

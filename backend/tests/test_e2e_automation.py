@@ -12,10 +12,12 @@ def override_settings(monkeypatch):
     monkeypatch.setattr(settings, "ENABLE_MEMORY", False)
     monkeypatch.setattr(settings, "ENABLE_VALIDATION", False)
     monkeypatch.setattr(settings, "ENABLE_DEDUP", False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test_gemini_key")
 
 @pytest.mark.asyncio
+@patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.diagram_service.render_mermaid_to_png", new_callable=AsyncMock)
+@patch("app.services.generation.providers.gemini_image.generate_gemini_image")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -25,15 +27,21 @@ async def test_automation_daily_success(
     mock_publish,
     mock_render_mermaid,
     mock_execute_with_retry,
+    mock_gemini_generate,
     override_settings
 ):
     """Test 1: Complete Scheduled Automation Flow (API -> DB -> Publish -> Success)"""
     mock_get_account.return_value = AsyncMock()
-    mock_publish.return_value = "urn:li:share:123456789"
+    mock_publish.return_value = "urn:li:share:987654321"
+    mock_render_mermaid.return_value = b'fake_png_bytes'
+    mock_gemini_generate.return_value = '{"concept": "test", "style": "test", "avoid": "test"}'
+    
+    # 2800 character string ('A' repeated 2800 times)turn_value = '{"concept": "test", "style": "test", "avoid": "test"}'
     import base64
     jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
     valid_data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
     mock_render_mermaid.return_value = b'fake_png_bytes'
+    mock_gemini_generate.return_value = '{"concept": "test", "style": "test", "avoid": "test"}'
     
     # Mock LLM generation. execute_with_retry is used for Gemini/Cohere.
     # We return a dummy object with `.output_text`.
@@ -74,7 +82,7 @@ async def test_automation_daily_success(
             data = response.json()
             
             assert data["status"] == "PUBLISHED"
-            assert data["linkedin_post_id"] == "urn:li:share:123456789"
+            assert data["linkedin_post_id"] == "urn:li:share:987654321"
             assert data["character_count"] > 10
             assert data["image_uploaded"] is True
             assert data["trace_id"] == "run-test-1"
@@ -86,8 +94,9 @@ async def test_automation_daily_success(
         app.dependency_overrides.pop(get_db, None)
 
 @pytest.mark.asyncio
+@patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
 @patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
-@patch("app.services.generation.diagram_service.render_mermaid_to_png", new_callable=AsyncMock)
+@patch("app.services.generation.providers.gemini_image.generate_gemini_image")
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -97,6 +106,7 @@ async def test_full_length_post_integrity(
     mock_publish,
     mock_render_mermaid,
     mock_execute_with_retry,
+    mock_gemini_generate,
     override_settings
 ):
     """Test 2: Ensure a 2800-character post is not truncated at any step."""
