@@ -39,6 +39,10 @@ class LLMGenerationOutput(BaseModel):
         True,
         description="Whether the post needs an accompanying image",
     )
+    mermaid_diagram: Optional[str] = Field(
+        None,
+        description="Mermaid flowchart diagram code if visual diagram is needed",
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Nested metadata containing post_type, hook_style, audience, goal, etc.",

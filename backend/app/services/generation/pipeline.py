@@ -227,8 +227,8 @@ class ContentGenerationPipeline:
         s15_para = len([p for p in generated_text.split('\n\n') if p.strip()])
         logger.info(f"[TRACE] [POST JSON REPAIR] chars={s15_char} | paras={s15_para} | hash={s15_hash} | end={repr(generated_text[-50:])}")
         
-        # Override dynamic evaluation: disable images for the weekend fallback
-        context.requires_image = False
+        # Override dynamic evaluation: hardcode requires_image = True for all pipeline executions
+        context.requires_image = True
         llm_output_metadata = parsed_data.get("metadata", {})
         if not isinstance(llm_output_metadata, dict):
             llm_output_metadata = {}

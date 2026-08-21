@@ -35,3 +35,16 @@ async def test_render_mermaid_to_png_invalid_syntax(mock_post):
     mermaid_code = "invalid mermaid syntax here 123 !@#"
     png_bytes = await render_mermaid_to_png(mermaid_code)
     assert png_bytes is None
+
+@pytest.mark.asyncio
+@patch('httpx.AsyncClient.post')
+async def test_render_mermaid_to_png_timeout_or_500(mock_post):
+    import httpx
+    # Simulate a timeout exception
+    mock_post.side_effect = httpx.TimeoutException("Timeout")
+    
+    mermaid_code = "flowchart TD\\n A-->B"
+    png_bytes = await render_mermaid_to_png(mermaid_code)
+    
+    # Should gracefully return None and fallback to text-only
+    assert png_bytes is None

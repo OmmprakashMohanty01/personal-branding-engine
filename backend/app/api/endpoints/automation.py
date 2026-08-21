@@ -172,8 +172,8 @@ async def generate_daily(
             # We pass run_id as trace_id for downstream logging correlation
             context = PipelineContext(topic=topic, db=db, trace_id=run_id, draft=draft)
             
-            # HARDCODE OVERRIDE: Disable image generation for the weekend
-            context.requires_image = False
+            # HARDCODE OVERRIDE: Force image generation for all daily automated posts
+            context.requires_image = True
             
             # generate the draft and commit to db (checkpoint)
             draft = await pipeline.run(context, commit_db=True)

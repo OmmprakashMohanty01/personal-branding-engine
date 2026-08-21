@@ -62,6 +62,7 @@ class PipelineContext:
     generated_text: str = ""
     refined_text: str = ""
     requires_image: bool = True
+    mermaid_diagram: Optional[str] = None
     image_prompt: Optional[str] = None
     image_url: Optional[str] = None
 

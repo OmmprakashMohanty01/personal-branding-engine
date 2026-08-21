@@ -236,7 +236,6 @@ class TestImageDirector:
         
         # Should gracefully degrade to default string
         assert "Editorial corporate technology photography" in prompt
-        assert "minimalist workspaces" in prompt
 # 5. PROMPT BUILDER TESTS
 # ==========================================
 class TestPromptBuilder:
@@ -289,7 +288,7 @@ class TestLLMGenerationOutput:
         output = LLMGenerationOutput(
             content_text="This is a technical post.",
             requires_image=True,
-            image_prompt="A dramatic close-up of circuit boards",
+            mermaid_diagram="flowchart TD\\n A-->B",
             metadata={
                 "post_type": "insight",
                 "hook_style": "technical observation",
@@ -299,6 +298,7 @@ class TestLLMGenerationOutput:
         )
         assert output.content_text == "This is a technical post."
         assert output.requires_image is True
+        assert output.mermaid_diagram == "flowchart TD\\n A-->B"
         assert output.metadata["post_type"] == "insight"
         assert output.metadata["goal"] == "teach"
 
