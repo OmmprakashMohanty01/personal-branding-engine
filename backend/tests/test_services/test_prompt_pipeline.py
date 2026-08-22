@@ -242,12 +242,9 @@ class TestPromptBuilder:
         assert "autonomous AI" in prompt  # SYSTEM
         assert "Test Author" in prompt  # PERSONA
         assert "github.com/OmmprakashMohanty01" in prompt  # AUTHOR CONTEXT
-        assert "HOOK THEME" in prompt  # WRITING DNA
-        assert "EVIDENCE RULE" in prompt  # WRITING DNA
         assert "Goal:" in prompt  # CONTENT STRATEGY
-        # IMAGE RULES removed from prompt (P5) — image prompts are now deterministic
+        # WRITING DNA and OUTPUT CONTRACT removed from prompt (Two-Stage Pipeline)
         assert "SELF-REVISION" in prompt  # SELF-CHECK
-        assert "metadata" in prompt  # OUTPUT CONTRACT
 
     def test_cohere_prompt_deprecated_but_still_works(self):
         """Cohere refinement template is deprecated but method still returns it."""

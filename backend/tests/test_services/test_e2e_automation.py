@@ -105,9 +105,9 @@ async def test_generate_daily_atomic_success(mock_publish, mock_run, mock_get_db
     assert response.json()["status"] == "PUBLISHED"
     
     # Verify atomicity lifecycle
-    mock_run.assert_called_once()
+    mock_run.assert_awaited_once()
     mock_db_session.rollback.assert_not_called()
-    mock_publish.assert_called_once()
+    mock_publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -186,4 +186,4 @@ async def test_generate_daily_atomic_rollback_on_publish_failure(mock_publish, m
     assert "LinkedIn API Timeout" in response.json()["detail"]
     
     # The transaction MUST rollback to maintain atomicity if the end-to-end flow breaks
-    mock_db_session.rollback.assert_called_once()
+    mock_db_session.rollback.assert_awaited_once()

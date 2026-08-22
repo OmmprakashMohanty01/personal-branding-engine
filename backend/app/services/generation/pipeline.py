@@ -138,100 +138,104 @@ class ContentGenerationPipeline:
         pipeline_metadata = self.prompt_builder.get_generation_metadata()
         self._log_stage("PROMPT_BUILD", context.trace_id, "SUCCESS", f"system={len(system_prompt)} chars, user={len(user_prompt)} chars")
 
-        # 3. LLM Generation (Gemini primary, Cohere fallback)
+        # 3. LLM Generation (Two-Stage Cognitive Pipeline)
         self._log_stage("LLM_GENERATE", context.trace_id, "START")
         p_start = time.time()
-        stage1_raw = ""
-        stage_1_prompt = f"{system_prompt}\n\nUser Input/Topic: {user_prompt}"
-
+        
         def inc_retry(attempt: int):
             context.telemetry.retry_count += 1
 
-        async def call_gemini():
-            import asyncio
-            from google import genai
-            gemini_key = self.gemini_api_key or "mock_gemini_key"
-            client = genai.Client(api_key=gemini_key)
-            
-            def _sync_call():
-                return client.interactions.create(
-                    model="gemini-3.5-flash",
-                    input=stage_1_prompt,
-                )
-            return await asyncio.to_thread(_sync_call)
-
-        try:
-            interaction = await execute_with_retry(
-                call_gemini,
-                circuit_breaker=self.gemini_breaker,
-                max_retries=2,
-                on_retry=inc_retry
-            )
-            stage1_raw = interaction.output_text
-            context.telemetry.provider_latency_ms = round((time.time() - p_start) * 1000, 2)
-            logger.info(f"[STAGE 1 - Gemini] Generated raw draft in {context.telemetry.provider_latency_ms}ms")
-            
-            # TRACE: Stage 1 Raw Gemini Output
-            import hashlib
-            s1_hash = hashlib.sha256(stage1_raw.encode('utf-8')).hexdigest()[:8]
-            s1_char = len(stage1_raw)
-            s1_para = len([p for p in stage1_raw.split('\n\n') if p.strip()])
-            logger.info(f"[TRACE] [STAGE 1 RAW] chars={s1_char} | paras={s1_para} | hash={s1_hash} | end={repr(stage1_raw[-50:])}")
-
-        except Exception as exc:
-            error_str = str(exc).lower()
-            if "high demand" in error_str or "capacity" in error_str:
-                logger.warning(f"[STAGE 1 FALLBACK] Gemini capacity error: {exc}. Attempting Cohere fallback.")
-            else:
-                logger.warning(f"[STAGE 1 FALLBACK] Gemini primary error: {exc}. Attempting Cohere fallback.")
-            context.telemetry.fallback_provider_used = "cohere"
-            try:
-                import cohere
-
-                async def call_cohere():
-                    cohere_key = self.cohere_api_key or "mock_cohere_key"
-                    co = cohere.AsyncClientV2(api_key=cohere_key)
-                    return await co.chat(
-                        model="command-a",
-                        messages=[{"role": "user", "content": stage_1_prompt}],
+        async def call_llm(prompt_text: str, stage_name: str) -> str:
+            async def call_gemini():
+                import asyncio
+                from google import genai
+                gemini_key = self.gemini_api_key or "mock_gemini_key"
+                client = genai.Client(api_key=gemini_key)
+                def _sync_call():
+                    return client.interactions.create(
+                        model="gemini-3.5-flash",
+                        input=prompt_text,
                     )
-                
-                resp = await execute_with_retry(
-                    call_cohere,
-                    circuit_breaker=self.cohere_breaker,
+                return await asyncio.to_thread(_sync_call)
+
+            try:
+                interaction = await execute_with_retry(
+                    call_gemini,
+                    circuit_breaker=self.gemini_breaker,
                     max_retries=2,
                     on_retry=inc_retry
                 )
-                stage1_raw = next(
-                    (block.text for block in resp.message.content if hasattr(block, "text") and block.text),
-                    "",
-                ) if (resp.message and resp.message.content) else ""
-            except Exception as cohere_err:
-                logger.error(f"Stage 1 Cohere fallback also failed: {cohere_err}")
-                from fastapi import HTTPException
-                raise HTTPException(
-                    status_code=503,
-                    detail="All AI providers are temporarily unavailable. Please try again later."
-                )
+                return interaction.output_text
+            except Exception as exc:
+                error_str = str(exc).lower()
+                if "high demand" in error_str or "capacity" in error_str:
+                    logger.warning(f"[{stage_name} FALLBACK] Gemini capacity error: {exc}. Attempting Cohere fallback.")
+                else:
+                    logger.warning(f"[{stage_name} FALLBACK] Gemini primary error: {exc}. Attempting Cohere fallback.")
+                context.telemetry.fallback_provider_used = "cohere"
+                try:
+                    import cohere
+                    async def call_cohere():
+                        cohere_key = self.cohere_api_key or "mock_cohere_key"
+                        co = cohere.AsyncClientV2(api_key=cohere_key)
+                        return await co.chat(
+                            model="command-a",
+                            messages=[{"role": "user", "content": prompt_text}],
+                        )
+                    resp = await execute_with_retry(
+                        call_cohere,
+                        circuit_breaker=self.cohere_breaker,
+                        max_retries=2,
+                        on_retry=inc_retry
+                    )
+                    return next(
+                        (block.text for block in resp.message.content if hasattr(block, "text") and block.text),
+                        "",
+                    ) if (resp.message and resp.message.content) else ""
+                except Exception as cohere_err:
+                    logger.error(f"{stage_name} Cohere fallback also failed: {cohere_err}")
+                    from fastapi import HTTPException
+                    raise HTTPException(
+                        status_code=503,
+                        detail="All AI providers are temporarily unavailable. Please try again later."
+                    )
 
-        parsed_data, was_repaired = self.json_repair_stage.repair(stage1_raw)
-        self._log_stage("JSON_REPAIR", context.trace_id, "SUCCESS", f"repaired={was_repaired}")
-        if was_repaired:
-            context.add_warning("JSON structural repair applied to Stage 1 output.")
+        from app.services.generation.prompts.stage1_log import get_raw_log_prompt
+        from app.services.generation.prompts.stage2_compiler import get_compiler_prompt
 
-        generated_text = parsed_data.get("content_text", stage1_raw)
+        context_string = f"{system_prompt}\n\nAdditional Input: {user_prompt}"
+        stage1_prompt_text = get_raw_log_prompt(topic=context.topic, context=context_string)
         
-        # TRACE: Post JSON Repair
+        # STAGE 1: RAW LOG
+        self._log_stage("LLM_GENERATE_STAGE1", context.trace_id, "START")
+        raw_log = await call_llm(stage1_prompt_text, "STAGE1")
+        self._log_stage("LLM_GENERATE_STAGE1", context.trace_id, "SUCCESS")
+        
+        # TRACE: Stage 1 Raw Gemini Output
+        import hashlib
+        s1_hash = hashlib.sha256(raw_log.encode('utf-8')).hexdigest()[:8]
+        s1_char = len(raw_log)
+        s1_para = len([p for p in raw_log.split('\n\n') if p.strip()])
+        logger.info(f"[TRACE] [STAGE 1 RAW] chars={s1_char} | paras={s1_para} | hash={s1_hash} | end={repr(raw_log[-50:])}")
+
+        # STAGE 2: COMPILER
+        self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "START")
+        stage2_prompt_text = get_compiler_prompt(raw_log=raw_log)
+        generated_text = await call_llm(stage2_prompt_text, "STAGE2")
+        self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "SUCCESS")
+        
+        context.telemetry.provider_latency_ms = round((time.time() - p_start) * 1000, 2)
+        logger.info(f"[STAGE 2 - Gemini/Cohere] Generated final draft in {context.telemetry.provider_latency_ms}ms")
+        
+        # TRACE: Post Stage 2
         s15_hash = hashlib.sha256(generated_text.encode('utf-8')).hexdigest()[:8]
         s15_char = len(generated_text)
         s15_para = len([p for p in generated_text.split('\n\n') if p.strip()])
-        logger.info(f"[TRACE] [POST JSON REPAIR] chars={s15_char} | paras={s15_para} | hash={s15_hash} | end={repr(generated_text[-50:])}")
+        logger.info(f"[TRACE] [POST STAGE 2] chars={s15_char} | paras={s15_para} | hash={s15_hash} | end={repr(generated_text[-50:])}")
         
         # Override dynamic evaluation: hardcode requires_image = True for all pipeline executions
         context.requires_image = True
-        llm_output_metadata = parsed_data.get("metadata", {})
-        if not isinstance(llm_output_metadata, dict):
-            llm_output_metadata = {}
+        llm_output_metadata = {}
 
         # The image prompt is no longer used, as we rely on Mermaid diagrams
         context.image_prompt = None

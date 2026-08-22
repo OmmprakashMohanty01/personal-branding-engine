@@ -65,7 +65,7 @@ def test_encryption_decryption_utility():
 # ==========================================
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient.post")
-async def test_client_refresh_expired_token(mock_post: MagicMock, db_session: AsyncSession):
+async def test_client_refresh_expired_token(mock_post: AsyncMock, db_session: AsyncSession):
     # Set up expired LinkedIn account
     now = datetime.now(timezone.utc)
     account = LinkedInAccount(
@@ -107,7 +107,7 @@ async def test_client_refresh_expired_token(mock_post: MagicMock, db_session: As
 # ==========================================
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
-async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_session: AsyncSession):
+async def test_orchestrator_publishing_success(mock_publish: AsyncMock, db_session: AsyncSession):
     mock_publish.return_value = "urn:li:share:share_id_987"
     
     # Seed account and draft in database
@@ -142,7 +142,7 @@ async def test_orchestrator_publishing_success(mock_publish: MagicMock, db_sessi
 
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
-async def test_orchestrator_publishing_failure_handling(mock_publish: MagicMock, db_session: AsyncSession):
+async def test_orchestrator_publishing_failure_handling(mock_publish: AsyncMock, db_session: AsyncSession):
     # Simulate API HTTP Error
     mock_publish.side_effect = Exception("HTTP 400 Bad Request")
     
@@ -214,7 +214,7 @@ async def test_publishing_api_endpoints_connect(api_client: httpx.AsyncClient, d
 
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient.post")
-async def test_client_refresh_within_48_hours(mock_post: MagicMock, db_session: AsyncSession):
+async def test_client_refresh_within_48_hours(mock_post: AsyncMock, db_session: AsyncSession):
     now = datetime.now(timezone.utc)
     # Token expires in 40 hours (within the 48-hour threshold window)
     account = LinkedInAccount(
@@ -239,7 +239,7 @@ async def test_client_refresh_within_48_hours(mock_post: MagicMock, db_session: 
     active_token = await client.check_and_refresh_token(db_session, account)
     
     assert active_token == "new_refreshed_access_48h"
-    mock_post.assert_called_once()
+    mock_post.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -363,7 +363,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         )
         
         # Assert PUT request was called with binary data and correct headers
-        mock_put.assert_called_once_with(
+        mock_put.assert_awaited_once_with(
             "https://www.linkedin.com/dms-uploads/image-upload-target-123",
             content=expected_bytes,
             headers={

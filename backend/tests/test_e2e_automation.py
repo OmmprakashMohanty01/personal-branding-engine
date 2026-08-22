@@ -50,7 +50,7 @@ async def test_automation_daily_success(
             self.output_text = text
             
     mock_execute_with_retry.return_value = MockInteraction(
-        text='{"content_text": "This is a fully generated post ready for publishing.", "metadata": {}, "requires_image": true, "mermaid_diagram": "flowchart TD\\n A-->B"}'
+        text='This is a fully generated post ready for publishing.'
     )
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -88,8 +88,8 @@ async def test_automation_daily_success(
             assert data["trace_id"] == "run-test-1"
             
             # Verify mocks were called
-            mock_render_mermaid.assert_called_once()
-            mock_publish.assert_called_once()
+            mock_render_mermaid.assert_awaited_once()
+            mock_publish.assert_awaited_once()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -113,13 +113,14 @@ async def test_full_length_post_integrity(
     long_post_text = "A" * 2800
     
     mock_render_mermaid.return_value = b'fake_png_bytes'
+    mock_gemini_generate.return_value = '{"visual_type": "none"}'
     
     class MockInteraction:
         def __init__(self, text):
             self.output_text = text
             
     mock_execute_with_retry.return_value = MockInteraction(
-        text=f'{{"content_text": "{long_post_text}", "metadata": {{"key": "value"}}, "requires_image": true, "mermaid_diagram": "flowchart TD\\n A-->B"}}'
+        text=long_post_text
     )
     mock_publish.return_value = "urn:li:share:longpost"
     mock_publish.return_value = "urn:li:share:longpost"
@@ -218,7 +219,8 @@ async def test_automation_daily_endpoint_response(
     from app.database import get_db
     
     # No need to mock the advisory lock anymore since we removed it
-    mock_db = AsyncMock()
+    from sqlalchemy.ext.asyncio import AsyncSession
+    mock_db = AsyncMock(spec=AsyncSession)
     
     async def override_get_db():
         yield mock_db
@@ -262,8 +264,9 @@ async def test_automation_daily_concurrency(
     """Test that a concurrent request resulting in IntegrityError returns 429."""
     from app.database import get_db
     import sqlalchemy
+    from sqlalchemy.ext.asyncio import AsyncSession
     
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     # Simulate another thread inserting the same idempotency_key
     mock_db.commit.side_effect = sqlalchemy.exc.IntegrityError("Unique constraint failed", params={}, orig=Exception())
     
@@ -320,7 +323,8 @@ async def test_automation_daily_resumption(
     )
     mock_publish_draft.return_value = published_draft
     
-    mock_db = AsyncMock()
+    from sqlalchemy.ext.asyncio import AsyncSession
+    mock_db = AsyncMock(spec=AsyncSession)
     async def override_get_db():
         yield mock_db
         
@@ -342,7 +346,7 @@ async def test_automation_daily_resumption(
             mock_pipeline_run.assert_not_called()
             
             # The publishing orchestrator SHOULD be called!
-            mock_publish_draft.assert_called_once()
+            mock_publish_draft.assert_awaited_once()
             
             data = response.json()
             assert data["status"] == "PUBLISHED"
@@ -392,7 +396,7 @@ async def test_linkedin_idempotency_timeout_recovery(
             
             # The client should have swallowed the exception and returned the matched URN
             assert result == "urn:li:share:recovered123"
-            mock_fetch_recent_posts.assert_called_once()
+            mock_fetch_recent_posts.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_failure_recovery_gemini_timeout():

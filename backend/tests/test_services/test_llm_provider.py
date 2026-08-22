@@ -75,14 +75,14 @@ async def test_groq_provider_success(mock_groq: MagicMock):
     provider = GroqProvider(api_key="test-key", model="llama-3.3-70b-versatile")
     result = await provider.generate(prompt="Hello", system_instruction="Be polite")
     assert result == "Response from Groq"
-    provider.client.chat.completions.create.assert_called_once()
+    provider.client.chat.completions.create.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_openai_provider_success(mock_openai: MagicMock):
     provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
     result = await provider.generate(prompt="Hello", system_instruction="Be brief")
     assert result == "Response from OpenAI"
-    provider.client.chat.completions.create.assert_called_once()
+    provider.client.chat.completions.create.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_gemini_provider_success(mock_gemini: MagicMock):
@@ -108,7 +108,7 @@ async def test_fallback_primary_success(mock_groq: MagicMock, mock_gemini: Magic
     
     # Verify primary generated, gemini was never called for generation
     groq_instance = fallback_provider.providers["groq"]
-    groq_instance.client.chat.completions.create.assert_called_once()
+    groq_instance.client.chat.completions.create.assert_awaited_once()
     
     gemini_instance = fallback_provider.providers["gemini"]
     # Check that interactions.create was not called
@@ -132,7 +132,7 @@ async def test_fallback_primary_fails_secondary_succeeds(mock_groq: MagicMock, m
     assert result == "Response from Gemini"
     
     # Verify both were tried, with Gemini succeeding
-    mock_groq.return_value.chat.completions.create.assert_called_once()
+    mock_groq.return_value.chat.completions.create.assert_awaited_once()
     mock_gemini.return_value.interactions.create.assert_called_once()
 
 @pytest.mark.asyncio

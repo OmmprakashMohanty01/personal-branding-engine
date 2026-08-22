@@ -124,9 +124,10 @@ class PromptBuilder:
         )
         sections.append(strategy_rendered)
 
-        # WRITING DNA
-        dna_rendered = Template(WRITING_DNA_TEMPLATE).render(writing_dna=writing_dna)
-        sections.append(dna_rendered)
+        # WRITING DNA is now handled by the Two-Stage Cognitive Pipeline
+        # (Stage 1 Raw Log + Stage 2 Compiler). We remove the single-pass DNA.
+        # dna_rendered = Template(WRITING_DNA_TEMPLATE).render(writing_dna=writing_dna)
+        # sections.append(dna_rendered)
 
         # MEMORY (only if non-empty)
         if not memory_context.is_empty:
@@ -148,8 +149,8 @@ class PromptBuilder:
         # SELF-CHECK
         sections.append(SELF_CHECK_TEMPLATE)
 
-        # OUTPUT CONTRACT
-        sections.append(OUTPUT_SCHEMA_TEMPLATE)
+        # OUTPUT CONTRACT is removed because we expect raw text in the Two-Stage pipeline
+        # sections.append(OUTPUT_SCHEMA_TEMPLATE)
 
         full_prompt = SECTION_SEPARATOR.join(sections)
 
