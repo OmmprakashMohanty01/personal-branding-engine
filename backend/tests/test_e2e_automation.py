@@ -429,7 +429,8 @@ async def test_failure_recovery_gemini_timeout():
 
 
 @pytest.mark.asyncio
-async def test_manual_generation_async():
+@patch("app.api.endpoints.generation.run_pipeline_background")
+async def test_manual_generation_async(mock_run_pipeline):
     """Test that the manual generation endpoint returns 202 Accepted and queues a background task."""
     from app.database import get_db
     from sqlalchemy.ext.asyncio import AsyncSession
