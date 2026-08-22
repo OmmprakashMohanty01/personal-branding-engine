@@ -56,6 +56,8 @@ class DraftResponse(BaseModel):
     status: str
     generated_at: datetime
     llm_metadata: Dict[str, Any]
+    vision_score: Optional[int] = None
+    vision_reasoning: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

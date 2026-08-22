@@ -21,9 +21,11 @@ def override_settings(monkeypatch):
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.services.generation.router.validate_image_bytes", return_value=True)
+@patch("app.services.generation.vision_gate.evaluate_image_alignment", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_automation_daily_success(
     mock_check_idempotency,
+    mock_evaluate_image,
     mock_validate_image_bytes,
     mock_get_account,
     mock_publish,
@@ -37,6 +39,7 @@ async def test_automation_daily_success(
     mock_publish.return_value = "urn:li:share:987654321"
     mock_render_mermaid.return_value = b'fake_png_bytes'
     mock_gemini_generate.return_value = '{"visual_type": "photo", "prompt_or_code": "test"}'
+    mock_evaluate_image.return_value = {"passed": True, "score": 90, "reason": "Looks good"}
     
     # 2800 character string ('A' repeated 2800 times)
     import base64
@@ -99,12 +102,16 @@ async def test_automation_daily_success(
 @patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
+@patch("app.services.generation.router.validate_image_bytes", return_value=True)
+@patch("app.services.generation.vision_gate.evaluate_image_alignment", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_full_length_post_integrity(
     mock_check_idempotency,
+    mock_evaluate_image,
+    mock_validate_image_bytes,
     mock_get_account,
     mock_publish,
-    mock_render_mermaid,
+    mock_generate_flux_image,
     mock_execute_with_retry,
     mock_gemini_generate,
     override_settings
@@ -112,8 +119,9 @@ async def test_full_length_post_integrity(
     """Test 2: Ensure a 2800-character post is not truncated at any step."""
     long_post_text = "A" * 2800
     
-    mock_render_mermaid.return_value = b'fake_png_bytes'
-    mock_gemini_generate.return_value = '{"visual_type": "none"}'
+    mock_generate_flux_image.return_value = b'fake_png_bytes'
+    mock_gemini_generate.return_value = '{"visual_type": "photo", "prompt_or_code": "test"}'
+    mock_evaluate_image.return_value = {"passed": True, "score": 90, "reason": "Looks good"}
     
     class MockInteraction:
         def __init__(self, text):
@@ -191,7 +199,9 @@ async def test_automation_consecutive_days_simulation(override_settings):
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=False)
 @patch("app.services.generation.pipeline.ContentGenerationPipeline.run", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator.publish_draft", new_callable=AsyncMock)
+@patch("app.services.generation.orchestrator.process_visuals_for_draft", new_callable=AsyncMock)
 async def test_automation_daily_endpoint_response(
+    mock_process_visuals,
     mock_publish_draft,
     mock_pipeline_run,
     mock_check_idempotency,

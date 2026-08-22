@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, JSON, func
+from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, JSON, func, Integer
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -31,6 +31,10 @@ class ContentDraft(Base):
     status = Column(String(20), default="DRAFT", nullable=False) # 'DRAFT', 'PUBLISHED', 'FAILED'
     generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     llm_metadata = Column(JSON, default=dict, nullable=False)
+    
+    # Semantic Quality Gate Metadata
+    vision_score = Column(Integer, nullable=True)
+    vision_reasoning = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

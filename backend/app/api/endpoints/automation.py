@@ -178,10 +178,16 @@ async def generate_daily(
             # generate the draft and commit to db (checkpoint)
             draft = await pipeline.run(context, commit_db=True)
             
+            from app.services.generation.orchestrator import process_visuals_for_draft
+            await process_visuals_for_draft(draft, context)
+            
             # Ensure run_id is persisted in llm_metadata
             meta = dict(draft.llm_metadata or {})
             meta["run_id"] = run_id
             draft.llm_metadata = meta
+            
+            import copy
+            draft.llm_metadata = copy.deepcopy(draft.llm_metadata)
             await db.commit()
         else:
             is_resumed_draft = True

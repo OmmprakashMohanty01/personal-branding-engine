@@ -322,30 +322,10 @@ class ContentGenerationPipeline:
                 logger.warning(f"[ASSERTION WARNING] Content deduplication flagged similarity score {sim_score:.2f}")
         self._log_stage("DEDUP", context.trace_id, "SUCCESS")
 
-        # 8. Image Generation Stage (Visual Director + Gemini Image)
-        self._log_stage("IMAGE_GEN", context.trace_id, "START")
-        if context.requires_image:
-            img_start = time.time()
-            try:
-                from app.services.generation.router import generate_visuals
-                
-                logger.info(f"[IMAGE_GEN] Routing visual generation...")
-                image_data_uri = await generate_visuals(context.refined_text, use_fallback=context.telemetry.fallback_provider_used)
-                
-                if image_data_uri:
-                    context.image_url = image_data_uri
-                else:
-                    logger.warning("[IMAGE FALLBACK] Visual router returned None. Degrading to text-only.")
-                    context.image_url = None
-                    context.requires_image = False
-            except Exception as e:
-                logger.warning(f"[IMAGE FALLBACK] Image generation pipeline threw unexpected error: {e}. Proceeding to publish as standard text-only payload.")
-                context.image_url = None
-                context.requires_image = False
-            context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
-        else:
-            context.image_url = None
-        self._log_stage("IMAGE_GEN", context.trace_id, "SUCCESS", f"has_image={context.image_url is not None}")
+        # 8. Image Generation Stage (Removed)
+        # Image generation is now handled asynchronously by the orchestrator (orchestrator.py)
+        # to decouple the generation and validation lifecycle.
+        self._log_stage("IMAGE_GEN", context.trace_id, "SKIPPED", "Handled by Orchestrator")
 
         # 9. Store ContentDraft in Database
         self._log_stage("DB_PERSIST", context.trace_id, "START")
@@ -370,7 +350,7 @@ class ContentGenerationPipeline:
             draft = context.draft
             draft.persona_id = context.persona.id if context.persona else None
             draft.content_text = context.refined_text
-            draft.status = "DRAFT"
+            # We do NOT set status to 'DRAFT' here; orchestrator will finalize it
             draft.generated_at = datetime.now(timezone.utc)
             draft.llm_metadata = llm_metadata
         else:
@@ -378,7 +358,7 @@ class ContentGenerationPipeline:
                 persona_id=context.persona.id if context.persona else None,
                 platform="linkedin",
                 content_text=context.refined_text,
-                status="DRAFT",
+                status="GENERATING", # Orchestrator will finalize it to DRAFT
                 generated_at=datetime.now(timezone.utc),
                 llm_metadata=llm_metadata,
             )
