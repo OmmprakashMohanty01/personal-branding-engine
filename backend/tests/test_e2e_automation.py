@@ -417,3 +417,31 @@ async def test_failure_recovery_gemini_timeout():
     assert result == "Success!"
     assert attempts == 3
 
+
+@pytest.mark.asyncio
+async def test_manual_generation_async():
+    """Test that the manual generation endpoint returns 202 Accepted and queues a background task."""
+    from app.database import get_db
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from unittest.mock import AsyncMock
+
+    mock_db = AsyncMock(spec=AsyncSession)
+    
+    async def override_get_db():
+        yield mock_db
+        
+    app.dependency_overrides[get_db] = override_get_db
+    
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/generation", 
+                json={"topic": "Test topic", "persona_id": "test-persona"}
+            )
+            
+            assert response.status_code == 202
+            data = response.json()
+            assert data["status"] == "GENERATING"
+            assert "draft_id" in data
+    finally:
+        app.dependency_overrides.pop(get_db, None)

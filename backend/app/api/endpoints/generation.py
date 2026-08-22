@@ -7,21 +7,21 @@ import json
 import time
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.database import get_db
 from app.models.content import ContentDraft
 from app.schemas.generation import GenerateRequest, DraftUpdatePayload, DraftResponse, ImageGenerateRequest
-from app.services.generation.pipeline import ContentGenerationPipeline
 from app.services.generation.context import PipelineContext
+from app.services.generation.orchestrator import run_pipeline_background
 from app.services.publishing.orchestrator import PublishingOrchestrator
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
 logger = logging.getLogger("branding_engine.api.generation")
     # #endregion
-gen_pipeline = ContentGenerationPipeline()
 pub_orchestrator = PublishingOrchestrator()
 
 @router.get("/live-news", response_model=List[str])
@@ -90,31 +90,37 @@ async def generate_image_endpoint(
             content={"status": "error", "image_url": None, "message": "Image generation currently unavailable."}
         )
 
-@router.post("", response_model=DraftResponse)
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def generate_content(
     payload: GenerateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
-    """Generate a LinkedIn post draft using Gemini and Cohere."""
+    """Generate a LinkedIn post draft asynchronously."""
     run_id = x_run_id or f"manual_gen_{int(time.time())}"
     logger.info(f"Manual generation started for topic: {payload.topic} [RunID: {run_id}]")
     try:
-        pipeline = ContentGenerationPipeline()
-        context = PipelineContext(
-            topic=payload.topic,
-            db=db,
+        # Create pending draft
+        draft = ContentDraft(
             persona_id=payload.persona_id,
-            trace_id=run_id
+            platform="linkedin",
+            content_text="",
+            status="GENERATING",
+            generated_at=datetime.now(timezone.utc),
+            llm_metadata={"topic": payload.topic, "trace_id": run_id}
         )
-        draft = await pipeline.run(context)
-        return draft
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
+        db.add(draft)
+        await db.commit()
+        await db.refresh(draft)
+
+        # Queue the heavy generation task
+        background_tasks.add_task(run_pipeline_background, str(draft.id), payload.topic, payload.persona_id, run_id)
+        
+        return {"message": "Draft generation started", "draft_id": str(draft.id), "status": "GENERATING"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+        logger.error(f"Failed to start generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Generation failed to start: {str(e)}")
 
 @router.get("/drafts", response_model=List[DraftResponse])
 async def list_drafts(
