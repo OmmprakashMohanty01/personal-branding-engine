@@ -79,6 +79,14 @@ class PublishingOrchestrator:
         requires_image = metadata.get("requires_image")
         image_url = metadata.get("image_url")
         
+        if image_url:
+            if "localhost" in image_url or "127.0.0.1" in image_url:
+                logger.warning(
+                    f"[PUBLISH PRE-FLIGHT] Security guard triggered: Refusing to upload local image URL to LinkedIn: {image_url}. "
+                    "Falling back to text-only publish."
+                )
+                image_url = None
+                
         if requires_image and not image_url:
             from fastapi import HTTPException
             raise HTTPException(

@@ -393,3 +393,33 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             },
             headers=expected_rest_headers
         )
+
+@pytest.mark.asyncio
+async def test_orchestrator_linkedin_pre_flight_local_url_fallback(db_session: AsyncSession):
+    account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        access_token=encrypt_token("access"),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2)
+    )
+    db_session.add(account)
+    
+    draft = ContentDraft(
+        id="d-li-local",
+        content_text="This is a valid length post that has a local image URL. It should fallback.",
+        status="DRAFT",
+        llm_metadata={"requires_image": True, "image_url": "http://127.0.0.1:8000/image.jpg"}
+    )
+    db_session.add(draft)
+    await db_session.commit()
+    
+    orchestrator = PublishingOrchestrator()
+    with patch("app.services.publishing.orchestrator.execute_with_retry", new_callable=AsyncMock) as mock_execute:
+        mock_execute.return_value = "urn:li:share:text_only_fallback"
+        
+        # When requires_image=True but image_url gets wiped due to being local, the orchestrator raises HTTPException(400)
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await orchestrator.publish_draft(db_session, "d-li-local")
+            
+        assert exc_info.value.status_code == 400
+        assert "Image generated but not saved to database" in exc_info.value.detail
