@@ -69,22 +69,19 @@ async def evaluate_image_alignment(text_draft: str, image_url_or_base64: str) ->
     )
 
     prompt = f"""
-    You are a harsh but fair brand manager and creative director for a senior software engineer's LinkedIn presence.
-    We generated a draft post, and an accompanying image. Your job is to act as the Semantic Quality Gate.
-    
-    Evaluate the provided image against this text draft:
+    You are an elite, highly critical design director for a tech brand. Evaluate this generated image against the post text.
     
     --- TEXT DRAFT START ---
     {text_draft}
     --- TEXT DRAFT END ---
     
-    CRITERIA FOR PASSING (score >= 7):
-    1. Semantic relevance: The image must strongly relate to the core engineering topic or emotion of the text.
-    2. Absence of jarring artifacts: Look for weird AI text, mutated objects, or distracting hallucinations. If there is AI-generated text in the image that is illegible or misspelled, it MUST FAIL (score < 7).
-    3. Professional tone: Does it look premium and fit for a senior engineer?
-    
-    Be critical. If the image is generic stock fluff that adds no value, fail it (score < 7). 
-    If the image has corrupted AI text, fail it (score < 7).
+    CRITICAL AESTHETIC LAWS (Immediate Failure if violated):
+    1. OVERLAPPING TEXT: If this is a diagram and ANY text overlaps with lines, borders, or other text, you MUST FAIL IT (Score < 5).
+    2. CROPPING: If lines or shapes are cut off at the edges of the image, FAIL IT.
+    3. CLUTTER: If the diagram looks messy, cramped, or unreadable, FAIL IT.
+    4. HALLUCINATIONS: If this is a photorealistic image and it contains mangled text or mutant objects, FAIL IT.
+
+    You must score this image from 1-10. You must return `passed: false` if the score is below 7.
     
     Output JSON ONLY.
     """

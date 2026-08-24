@@ -15,7 +15,11 @@ def get_visual_director_prompt(post_content: str) -> str:
     
     RULES:
     - If a photo is chosen: No In-Image Text Rule: Explicitly forbid text, typography, fake UIs, logos, and labels. NO fantasy, NO cyberpunk, NO robots, NO glowing floating cubes, NO generic AI art.
-    - If a diagram is chosen: Output raw Mermaid.js syntax for a clean, professional architecture diagram.
+    - If a diagram is chosen: Output raw Mermaid.js syntax. IF YOU CHOOSE 'diagram', YOU MUST OBEY THESE STRICT SYNTAX RULES:
+      1. Keep it EXTREMELY simple. Maximum 3 to 4 nodes.
+      2. Use Top-Down (`graph TD` in Mermaid) or strictly linear layouts.
+      3. Node labels must be incredibly short (1 to 3 words maximum). Do NOT put long sentences inside nodes or they will overlap and look terrible.
+      4. Do NOT use complex subgraphs, nested boxes, or asymmetrical branching.
     
     POST CONTENT:
     {post_content}
