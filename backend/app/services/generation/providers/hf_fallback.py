@@ -6,9 +6,9 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 async def generate_hf_fallback(prompt: str) -> bytes | None:
-    api_key = os.environ.get("HF_API_KEY")
+    api_key = os.environ.get("HUGGINGFACE_API_KEY")
     if not api_key:
-        logger.warning("[HF FALLBACK] No HF_API_KEY found. Skipping HF fallback.")
+        logger.warning("[HF FALLBACK] No HUGGINGFACE_API_KEY found. Skipping HF fallback.")
         return None
     try:
         # Wrap sync call in asyncio.to_thread
