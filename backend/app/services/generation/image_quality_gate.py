@@ -18,7 +18,7 @@ logger = logging.getLogger("branding_engine.generation.image_quality_gate")
 class ImageQualityGate:
     """Validates image data URIs before persistence."""
 
-    MIN_IMAGE_SIZE_BYTES = 10_000       # 10KB — reject broken/placeholder images
+    MIN_IMAGE_SIZE_BYTES = 5120         # 5KB — reject broken/placeholder images
     MAX_IMAGE_SIZE_BYTES = 10_000_000   # 10MB — reject suspiciously large images
 
     # JPEG magic bytes: FF D8 FF

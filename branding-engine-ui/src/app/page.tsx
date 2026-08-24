@@ -615,7 +615,7 @@ export default function DashboardPage() {
                 </button>
 
                 {/* Image Preview */}
-                {editorImageUrl && (
+                {editorImageUrl && typeof editorImageUrl === "string" && editorImageUrl.trim() !== "" && editorImageUrl !== "null" && editorImageUrl !== "undefined" && (
                   <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40 aspect-video relative my-2">
                     <img 
                       src={editorImageUrl} 
