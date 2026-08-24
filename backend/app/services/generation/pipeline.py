@@ -183,7 +183,7 @@ class ContentGenerationPipeline:
                         cohere_key = self.cohere_api_key or "mock_cohere_key"
                         co = cohere.AsyncClientV2(api_key=cohere_key)
                         return await co.chat(
-                            model="command-a",
+                            model="command-r",
                             messages=[{"role": "user", "content": prompt_text}],
                         )
                     resp = await execute_with_retry(
