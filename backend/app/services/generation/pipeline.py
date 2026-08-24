@@ -43,6 +43,10 @@ from app.services.generation.writing_dna import WritingDNAEngine
 
 logger = logging.getLogger("branding_engine.generation.pipeline")
 
+FORBIDDEN_PATTERNS = [
+    r"^\s*[-*]\s+",           # Matches bullet points or dashes at the start of a line
+    r"(?i)\b(maybe I'?m wrong|I could be wrong|I realized)\b" # Matches forbidden hooks
+]
 
 class ContentGenerationPipeline:
     """Orchestrates modular stages for content generation with feature flags and resilience."""
@@ -220,8 +224,25 @@ class ContentGenerationPipeline:
 
         # STAGE 2: COMPILER
         self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "START")
-        stage2_prompt_text = get_compiler_prompt(raw_log=raw_log)
-        generated_text = await call_llm(stage2_prompt_text, "STAGE2")
+        
+        max_retries = 3
+        current_raw_log = raw_log
+        for attempt in range(max_retries):
+            stage2_prompt_text = get_compiler_prompt(raw_log=current_raw_log)
+            generated_text = await call_llm(stage2_prompt_text, "STAGE2")
+            
+            # Lexical Hard-Gate Check
+            failed_pattern = next((p for p in FORBIDDEN_PATTERNS if re.search(p, generated_text, re.MULTILINE)), None)
+            
+            if not failed_pattern:
+                break
+                
+            logger.warning(f"[LEXICAL GATE] Attempt {attempt + 1} failed. Caught forbidden pattern: {failed_pattern}")
+            # Add the failure feedback to the prompt for the next retry
+            current_raw_log += f"\n\n[SYSTEM FEEDBACK]: Your last attempt was rejected because it violated negative constraints. DO NOT use bullets or phrases like 'Maybe I'm wrong'."
+        else:
+            logger.error("[LEXICAL GATE] Max retries exhausted. Returning last draft.")
+            
         self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "SUCCESS")
         
         context.telemetry.provider_latency_ms = round((time.time() - p_start) * 1000, 2)
