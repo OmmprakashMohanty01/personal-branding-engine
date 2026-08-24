@@ -15,11 +15,16 @@ def get_visual_director_prompt(post_content: str) -> str:
     
     RULES:
     - If a photo is chosen: No In-Image Text Rule: Explicitly forbid text, typography, fake UIs, logos, and labels. NO fantasy, NO cyberpunk, NO robots, NO glowing floating cubes, NO generic AI art.
-    - If a diagram is chosen: Output raw Mermaid.js syntax. IF YOU CHOOSE 'diagram', YOU MUST OBEY THESE STRICT SYNTAX RULES:
-      1. Keep it EXTREMELY simple. Maximum 3 to 4 nodes.
-      2. Use Top-Down (`graph TD` in Mermaid) or strictly linear layouts.
-      3. Node labels must be incredibly short (1 to 3 words maximum). Do NOT put long sentences inside nodes or they will overlap and look terrible.
-      4. Do NOT use complex subgraphs, nested boxes, or asymmetrical branching.
+    - If a diagram is chosen: Output raw PlantUML syntax. IF YOU CHOOSE 'diagram', YOU MUST OBEY THESE STRICT SYNTAX RULES:
+      1. You MUST use PlantUML syntax. Do NOT use Mermaid.
+      2. Start the code with `@startuml` and end with `@enduml`.
+      3. Use the `skinparam` directive to enforce a clean, minimalist style. Example:
+         skinparam monochrome true
+         skinparam shadowing false
+         skinparam defaultFontName Arial
+      4. Keep it EXTREMELY simple. Maximum 3 to 4 nodes.
+      5. Use Top-Down (`top to bottom direction`) or strictly linear layouts.
+      6. Node labels must be short. Use `rectangle` or `component` shapes.
     
     POST CONTENT:
     {post_content}
@@ -30,7 +35,7 @@ def get_visual_director_prompt(post_content: str) -> str:
     {{
       "visual_type": "photo" | "diagram" | "none",
       "concept": "concrete visual description or diagram architecture",
-      "prompt_or_code": "The detailed photography prompt OR the raw Mermaid.js syntax"
+      "prompt_or_code": "The detailed photography prompt OR the raw PlantUML syntax"
     }}
     
     For photography, format the prompt_or_code as:

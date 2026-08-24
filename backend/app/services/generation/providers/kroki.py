@@ -6,19 +6,21 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-async def generate_kroki_diagram(diagram_code: str, diagram_type: str = "mermaid") -> bytes | None:
-    # Clean the code of markdown backticks
-    clean_code = diagram_code.replace("```mermaid", "").replace("```", "").strip()
+async def generate_kroki_diagram(diagram_code: str, diagram_type: str = "plantuml") -> bytes | None:
+    # Clean markdown fences
+    clean_code = diagram_code.replace("```plantuml", "").replace("```", "").strip()
     
-    # Inject a theme directive to force a white background and clean styling
-    if diagram_type == "mermaid":
-        clean_code = "%%{init: {'theme': 'default', 'themeVariables': {'background': '#ffffff'}}}%%\n" + clean_code
+    # Ensure standard PlantUML tags exist
+    if not clean_code.startswith("@startuml"):
+        clean_code = f"@startuml\n{clean_code}\n@enduml"
 
     url = "https://kroki.io"
+    
+    # Kroki prefers encoded URIs for GET, but we will use the POST API for stability
     payload = {
         "diagram_source": clean_code,
-        "diagram_type": diagram_type,
-        "output_format": "png"  # CRITICAL: Force PNG, never SVG
+        "diagram_type": "plantuml", # Hardcode to PlantUML
+        "output_format": "png"      # CRITICAL: Force PNG format
     }
     
     try:
