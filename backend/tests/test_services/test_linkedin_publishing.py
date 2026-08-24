@@ -337,7 +337,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         mock_put.return_value = mock_put_resp
         
         import base64
-        expected_bytes = b"a" * 1500
+        expected_bytes = b'\x89PNG\r\n\x1a\n' + b"a" * 1500
         image_base64 = "data:image/jpeg;base64," + base64.b64encode(expected_bytes).decode("utf-8")
         post_text_long = "This is a very long commentary designed to satisfy the strict length check assert of 100 characters in the publish_post method. It needs to be sufficiently descriptive to bypass validation."
         post_urn = await client.publish_post(db_session, account, post_text_long, image_url=image_base64)

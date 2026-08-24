@@ -12,6 +12,15 @@ from app.services.generation.formatters import LinkedInFormatter
 
 logger = logging.getLogger("branding_engine.publishing.linkedin.client")
 
+def _is_valid_image_format(image_bytes: bytes) -> bool:
+    # Check for PNG magic numbers
+    if image_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+        return True
+    # Check for JPEG magic numbers
+    if image_bytes.startswith(b'\xff\xd8\xff'):
+        return True
+    return False
+
 class LinkedInClient:
     """Async client wrapper for interacting with the LinkedIn Posts API and OAuth2 endpoints."""
     
@@ -120,6 +129,9 @@ class LinkedInClient:
             image_bytes = image_data
             
         logger.info(f"[IMAGE UPLOAD] Decoded image bytes. Length: {len(image_bytes)} bytes")
+        
+        if not _is_valid_image_format(image_bytes):
+            raise ValueError("Invalid image format. LinkedIn requires raw PNG or JPEG bytes. Aborting upload to prevent post deletion.")
         
         rest_headers = {
             "Authorization": f"Bearer {access_token}",

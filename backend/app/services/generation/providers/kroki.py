@@ -6,28 +6,28 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-async def generate_kroki_diagram(mermaid_code: str, max_retries: int = 3) -> bytes | None:
-    # Kroki expects the payload to be deflated and base64 encoded, then made URL safe
-    try:
-        compressed = zlib.compress(mermaid_code.encode("utf-8"), 9)
-        b64 = base64.urlsafe_b64encode(compressed).decode("ascii")
-        url = f"https://kroki.io/mermaid/svg/{b64}"
-    except Exception as e:
-        logger.error(f"[KROKI] Failed to encode mermaid payload: {e}")
-        return None
+async def generate_kroki_diagram(diagram_code: str, diagram_type: str = "mermaid") -> bytes | None:
+    # Clean the code of markdown backticks
+    clean_code = diagram_code.replace("```mermaid", "").replace("```", "").strip()
+    
+    # Inject a theme directive to force a white background and clean styling
+    if diagram_type == "mermaid":
+        clean_code = "%%{init: {'theme': 'default', 'themeVariables': {'background': '#ffffff'}}}%%\n" + clean_code
 
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    return res.content
-                logger.warning(f"[KROKI] Attempt {attempt + 1} returned status {res.status_code}")
-        except Exception as e:
-            logger.warning(f"[KROKI] Attempt {attempt + 1} failed: {e}")
-        
-        # Exponential backoff
-        if attempt < max_retries - 1:
-            await asyncio.sleep(2 ** attempt)
-            
-    return None
+    url = "https://kroki.io"
+    payload = {
+        "diagram_source": clean_code,
+        "diagram_type": diagram_type,
+        "output_format": "png"  # CRITICAL: Force PNG, never SVG
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            res = await client.post(url, json=payload)
+            if res.status_code == 200:
+                return res.content
+            logger.error(f"[KROKI] Failed to generate diagram: {res.text}")
+            return None
+    except Exception as e:
+        logger.error(f"[KROKI] Exception: {e}")
+        return None
