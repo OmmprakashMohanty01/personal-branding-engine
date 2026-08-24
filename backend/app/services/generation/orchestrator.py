@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.models.content import ContentDraft
@@ -109,7 +110,8 @@ async def run_pipeline_background(draft_id: str, topic: str, persona_id: str, tr
             logger.info(f"[BACKGROUND WORKER] Completed for draft {draft_id}")
 
         except Exception as e:
-            logger.error(f"[BACKGROUND WORKER] Failed for draft {draft_id}: {e}", exc_info=True)
+            logger.error(f"[BACKGROUND CRASH] Pipeline failed for draft {draft_id}: {e}")
+            logger.error(traceback.format_exc())
             # Fetch draft again in case of detached instance
             draft = await db.get(ContentDraft, draft_id)
             if draft:

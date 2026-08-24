@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./backend
-        run: uv sync
+        run: uv venv && uv pip install -r requirements.txt
 
       - name: Run Pytest Regression Suite
         working-directory: ./backend
@@ -38,6 +38,7 @@ jobs:
           ENVIRONMENT: test
           CRON_SECRET_KEY: test_secret_key
           GEMINI_API_KEY: mock_gemini_key
+          HF_API_KEY: mock_hf_key
           COHERE_API_KEY: mock_cohere_key
           ENABLE_LINKEDIN_PUBLISHING: 'False'
           AUTO_PUBLISH_ENABLED: 'False'
