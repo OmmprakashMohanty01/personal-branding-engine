@@ -40,5 +40,6 @@ jobs:
           GEMINI_API_KEY: mock_gemini_key
           HUGGINGFACE_API_KEY: mock_hf_key
           COHERE_API_KEY: mock_cohere_key
+          GROQ_API_KEY: dummy_groq_key_for_testing
           ENABLE_LINKEDIN_PUBLISHING: 'False'
           AUTO_PUBLISH_ENABLED: 'False'
