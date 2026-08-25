@@ -28,7 +28,7 @@ class ContentDraft(Base):
     persona_id = Column(String(36), ForeignKey("personas.id", ondelete="SET NULL"), nullable=True)
     platform = Column(String(50), default="linkedin", nullable=False)
     content_text = Column(Text, nullable=False)
-    status = Column(String(20), default="DRAFT", nullable=False) # 'DRAFT', 'PUBLISHED', 'FAILED'
+    status = Column(String(20), default="PENDING", nullable=False) # State machine: PENDING → GENERATING → DRAFT_READY → MEDIA_UPLOADING → MEDIA_VALIDATED → PUBLISHING → PUBLISHED | FAILED
     generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     llm_metadata = Column(JSON, default=dict, nullable=False)
     

@@ -15,46 +15,29 @@ def override_settings(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test_gemini_key")
 
 @pytest.mark.asyncio
-@patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
-@patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
+@patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
 @patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
-@patch("app.services.generation.router.validate_image_bytes", return_value=True)
-@patch("app.services.generation.vision_gate.evaluate_image_alignment", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_automation_daily_success(
     mock_check_idempotency,
-    mock_evaluate_image,
-    mock_validate_image_bytes,
     mock_get_account,
     mock_publish,
-    mock_render_mermaid,
-    mock_execute_with_retry,
-    mock_gemini_generate,
+    mock_generate_flux,
+    mock_litellm,
     override_settings
 ):
     """Test 1: Complete Scheduled Automation Flow (API -> DB -> Publish -> Success)"""
     mock_get_account.return_value = AsyncMock()
     mock_publish.return_value = "urn:li:share:987654321"
-    mock_render_mermaid.return_value = b'fake_png_bytes'
-    mock_gemini_generate.return_value = '{"visual_type": "photo", "prompt_or_code": "test"}'
-    mock_evaluate_image.return_value = {"passed": True, "score": 90, "reason": "Looks good"}
+    mock_generate_flux.return_value = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000  # Fake JPEG > 5KB
     
-    # 2800 character string ('A' repeated 2800 times)
-    import base64
-    jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000
-    valid_data_uri = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
-    
-    # Mock LLM generation. execute_with_retry is used for Gemini/Cohere.
-    # We return a dummy object with `.output_text`.
-    class MockInteraction:
-        def __init__(self, text):
-            self.output_text = text
-            
-    mock_execute_with_retry.return_value = MockInteraction(
-        text='This is a fully generated post ready for publishing.'
-    )
+    # Mock LiteLLM to return structured JSON
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = '{"draft": "This is a fully generated post ready for publishing. It has enough content to pass all the validation gates and length checks.", "self_check": "All good."}'
+    mock_litellm.return_value = mock_response
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
@@ -91,46 +74,35 @@ async def test_automation_daily_success(
             assert data["trace_id"] == "run-test-1"
             
             # Verify mocks were called
-            mock_render_mermaid.assert_awaited_once()
+            mock_litellm.assert_awaited()
             mock_publish.assert_awaited_once()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 @pytest.mark.asyncio
-@patch("app.services.llm_provider.GeminiProvider.generate", new_callable=AsyncMock)
-@patch("app.services.generation.pipeline.execute_with_retry", new_callable=AsyncMock)
+@patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
 @patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
-@patch("app.services.generation.router.validate_image_bytes", return_value=True)
-@patch("app.services.generation.vision_gate.evaluate_image_alignment", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_full_length_post_integrity(
     mock_check_idempotency,
-    mock_evaluate_image,
-    mock_validate_image_bytes,
     mock_get_account,
     mock_publish,
     mock_generate_flux_image,
-    mock_execute_with_retry,
-    mock_gemini_generate,
+    mock_litellm,
     override_settings
 ):
     """Test 2: Ensure a 2800-character post is not truncated at any step."""
     long_post_text = "A" * 2800
     
-    mock_generate_flux_image.return_value = b'fake_png_bytes'
-    mock_gemini_generate.return_value = '{"visual_type": "photo", "prompt_or_code": "test"}'
-    mock_evaluate_image.return_value = {"passed": True, "score": 90, "reason": "Looks good"}
+    mock_generate_flux_image.return_value = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000  # Fake JPEG > 5KB
     
-    class MockInteraction:
-        def __init__(self, text):
-            self.output_text = text
-            
-    mock_execute_with_retry.return_value = MockInteraction(
-        text=long_post_text
-    )
-    mock_publish.return_value = "urn:li:share:longpost"
+    # Mock LiteLLM to return the 2800-char text as a JSON draft
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = '{"draft": "' + long_post_text + '", "self_check": "OK"}'
+    mock_litellm.return_value = mock_response
     mock_publish.return_value = "urn:li:share:longpost"
     
     from app.database import get_db
@@ -197,13 +169,11 @@ async def test_automation_consecutive_days_simulation(override_settings):
 
 @pytest.mark.asyncio
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=False)
-@patch("app.services.generation.pipeline.ContentGenerationPipeline.run", new_callable=AsyncMock)
+@patch("app.api.endpoints.automation.run_pipeline_sync", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator.publish_draft", new_callable=AsyncMock)
-@patch("app.services.generation.orchestrator.process_visuals_for_draft", new_callable=AsyncMock)
 async def test_automation_daily_endpoint_response(
-    mock_process_visuals,
     mock_publish_draft,
-    mock_pipeline_run,
+    mock_run_pipeline_sync,
     mock_check_idempotency,
     override_settings
 ):
@@ -215,20 +185,31 @@ async def test_automation_daily_endpoint_response(
     mock_draft = ContentDraft(
         id="test-draft-123",
         content_text="This is a test post.",
-        status="PUBLISHED",
+        status="MEDIA_VALIDATED",
         llm_metadata={
             "linkedin_post_id": "urn:li:share:123",
             "image_url": "https://example.com/img.jpg"
         }
     )
     
-    mock_pipeline_run.return_value = mock_draft
-    mock_publish_draft.return_value = mock_draft
+    # Mock the synchronous pipeline
+    mock_run_pipeline_sync.return_value = mock_draft
+    
+    # Mock publishing to return PUBLISHED status
+    published_draft = ContentDraft(
+        id="test-draft-123",
+        content_text="This is a test post.",
+        status="PUBLISHED",
+        llm_metadata={
+            "linkedin_post_id": "urn:li:share:123",
+            "image_url": "https://example.com/img.jpg"
+        }
+    )
+    mock_publish_draft.return_value = published_draft
     
     # Needs a real DB session for the lock, so we mock the lock execution via dependency overrides
     from app.database import get_db
     
-    # No need to mock the advisory lock anymore since we removed it
     from sqlalchemy.ext.asyncio import AsyncSession
     mock_db = AsyncMock(spec=AsyncSession)
     
@@ -303,11 +284,11 @@ async def test_automation_daily_concurrency(
 
 @pytest.mark.asyncio
 @patch("app.api.endpoints.automation.check_today_idempotency")
-@patch("app.services.generation.pipeline.ContentGenerationPipeline.run", new_callable=AsyncMock)
+@patch("app.api.endpoints.automation.run_pipeline_sync", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator.publish_draft", new_callable=AsyncMock)
 async def test_automation_daily_resumption(
     mock_publish_draft,
-    mock_pipeline_run,
+    mock_run_pipeline_sync,
     mock_check_idempotency,
     override_settings
 ):
@@ -353,7 +334,7 @@ async def test_automation_daily_resumption(
             assert response.status_code == 200
             
             # The generation pipeline should NOT be called!
-            mock_pipeline_run.assert_not_called()
+            mock_run_pipeline_sync.assert_not_called()
             
             # The publishing orchestrator SHOULD be called!
             mock_publish_draft.assert_awaited_once()
@@ -429,12 +410,22 @@ async def test_failure_recovery_gemini_timeout():
 
 
 @pytest.mark.asyncio
-@patch("app.api.endpoints.generation.run_pipeline_background")
-async def test_manual_generation_async(mock_run_pipeline):
-    """Test that the manual generation endpoint returns 202 Accepted and queues a background task."""
+@patch("app.api.endpoints.generation.run_pipeline_sync", new_callable=AsyncMock)
+async def test_manual_generation_sync(mock_run_pipeline):
+    """Test that the manual generation endpoint returns 200 OK synchronously."""
     from app.database import get_db
     from sqlalchemy.ext.asyncio import AsyncSession
     from unittest.mock import AsyncMock
+    from app.models.content import ContentDraft
+
+    # Mock the synchronous pipeline to return a completed draft
+    mock_draft = ContentDraft(
+        id="test-sync-draft",
+        content_text="This is a synchronously generated post with enough length to pass checks.",
+        status="MEDIA_VALIDATED",
+        llm_metadata={"image_url": "data:image/png;base64,abc"}
+    )
+    mock_run_pipeline.return_value = mock_draft
 
     mock_db = AsyncMock(spec=AsyncSession)
     
@@ -450,9 +441,9 @@ async def test_manual_generation_async(mock_run_pipeline):
                 json={"topic": "Test topic", "persona_id": "test-persona"}
             )
             
-            assert response.status_code == 202
+            assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "GENERATING"
+            assert data["status"] == "MEDIA_VALIDATED"
             assert "draft_id" in data
     finally:
         app.dependency_overrides.pop(get_db, None)

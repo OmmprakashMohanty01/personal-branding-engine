@@ -1,22 +1,26 @@
 """
 pipeline.py
 ===========
-ContentGenerationPipeline — modular, feature-flagged execution pipeline for
-autonomous content draft generation.
+ContentGenerationPipeline — single-pass LiteLLM generation pipeline.
+
+Replaces the two-stage (raw log → compiler) cognitive pipeline with a single
+unified LiteLLM call that produces structured JSON. Provider fallback is
+handled by cascading through the PROVIDER_CHAIN. Lexical enforcement is
+deterministic Python string cleanup (no LLM retry loop).
 
 Stages:
 1. Context Initialization & Persona Resolution
 2. Strategy & Memory Selection
-3. LLM Draft Generation (Gemini primary, Cohere fallback)
-4. JSON Structural Repair
-5. Content-Preservation Gate
-6. Validation Registry
-7. Deduplication & Metrics Calculation
-8. Image Generation (deterministic prompt + Pollinations AI)
-9. Image Quality Gate
-10. Database Persistence & Transaction Commit
+3. Single-Pass LiteLLM Generation (Gemini → Groq 70B → Groq 8B)
+4. Deterministic Lexical Cleanup
+5. JSON Structural Repair
+6. Content-Preservation Gate
+7. Validation Registry
+8. Deduplication & Metrics Calculation
+9. Database Persistence & Transaction Commit
 """
 
+import json
 import logging
 import os
 import re
@@ -24,46 +28,76 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import litellm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.config import settings
 from app.models.content import ContentDraft, Persona
-from app.services.generation.author_knowledge import AuthorKnowledgeService
-from app.services.generation.circuit_breaker import CircuitBreaker, execute_with_retry
 from app.services.generation.context import PipelineContext
 from app.services.generation.deduplication import ContentDeduplicationStage
 from app.services.generation.formatters import LinkedInFormatter
-from app.services.generation.json_repair import JSONRepairStage
 from app.services.generation.prompt_builder import PromptBuilder
-from app.services.generation.prompt_memory import PromptMemoryService
 from app.services.generation.strategy_selector import StrategySelector
 from app.services.generation.validators import ValidatorRegistry
-from app.services.generation.writing_dna import WritingDNAEngine
 
 logger = logging.getLogger("branding_engine.generation.pipeline")
+litellm.suppress_debug_info = True
+
+# ── LiteLLM Provider Cascade ──
+# Each entry is a LiteLLM model string. We try them in order until one succeeds.
+PROVIDER_CHAIN = [
+    "gemini/gemini-2.5-flash-lite",
+    "groq/llama-3.3-70b-versatile",
+    "groq/llama-3.1-8b-instant",
+]
 
 FORBIDDEN_PATTERNS = [
     r"^\s*[-*]\s+",           # Matches bullet points or dashes at the start of a line
     r"(?i)\b(maybe I'?m wrong|I could be wrong|I realized)\b" # Matches forbidden hooks
 ]
 
+# Words that must never appear in the output
+FORBIDDEN_WORDS = [
+    "delve", "tapestry", "landscape", "game-changer", "seamless",
+    "robust", "ensure", "leverage", "crucial",
+]
+
+# ── The Unified System Prompt ──
+UNIFIED_SYSTEM_PROMPT = """You are a Senior Software Engineer writing a LinkedIn post about the topic below. You just spent hours deep in the code and you're sharing what actually happened.
+
+VOICE & STRUCTURE:
+Write in a raw, authentic, build in public engineering voice. No polish. Real talk.
+Anchor every point on concrete technical details: actual code patterns, real metrics, specific debugging stories. Show the messy reality.
+Strictly 1 to 2 sentence paragraphs. Maximum. Use ample whitespace for extreme scannability.
+Start with a broad hook that grips a WIDE audience, not just backend engineers. Frame the technical insight inside a universally relatable tension (overengineering, wasted time, wrong assumptions).
+
+ABSOLUTE FORBIDDEN LAWS:
+You MUST NOT use hyphens or dashes anywhere in the text. Not even in compound words. Replace them with spaces or rephrase.
+You MUST NOT use bullet points, asterisks, numbered lists, or any list formatting.
+You MUST NOT use these words: delve, tapestry, landscape, game changer, seamless, robust, ensure, leverage, crucial, reliable, scalable.
+You MUST NOT start with "I realized", "I could be wrong", "In today's", "It's amazing how", or "Maybe I'm wrong".
+You MUST NOT add a moral, a lesson, or broad advice at the end. The story IS the lesson.
+You MUST NOT use any B2B marketing fluff or sweeping certainties.
+
+ENDING:
+End the post by asking a single, specific question inviting the audience to share their own frustrating experience.
+
+OUTPUT FORMAT:
+Respond with ONLY a JSON object (no markdown fences, no extra text):
+{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>"}
+"""
+
+
 class ContentGenerationPipeline:
-    """Orchestrates modular stages for content generation with feature flags and resilience."""
+    """Orchestrates modular stages for content generation with LiteLLM and deterministic cleanup."""
 
     def __init__(self):
         self.prompt_builder = PromptBuilder()
         self.strategy_selector = StrategySelector()
-        self.json_repair_stage = JSONRepairStage()
         self.validator_registry = ValidatorRegistry()
         self.dedup_stage = ContentDeduplicationStage()
         self.linkedin_formatter = LinkedInFormatter()
-
-        self.gemini_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
-        self.cohere_api_key = settings.COHERE_API_KEY or os.getenv("COHERE_API_KEY")
-
-        self.gemini_breaker = CircuitBreaker(provider_name="gemini")
-        self.cohere_breaker = CircuitBreaker(provider_name="cohere")
 
     async def _get_persona(self, db: AsyncSession, persona_id: Optional[str]) -> Persona:
         """Resolve requested persona or return default persona."""
@@ -98,6 +132,109 @@ class ContentGenerationPipeline:
             f"[PIPELINE] [{stage_name}] {status}" + (f" — {detail}" if detail else ""),
             extra={"trace_id": trace_id, "stage": stage_name, "status": status, "detail": detail},
         )
+
+    @staticmethod
+    def _deterministic_cleanup(text: str) -> str:
+        """Enforce lexical rules via deterministic Python string operations.
+        
+        This replaces the old LLM retry loop — zero API calls, zero quota waste.
+        """
+        # Strip all hyphens and dashes (em dash, en dash, regular hyphen)
+        text = text.replace("—", " ")
+        text = text.replace("–", " ")
+        text = text.replace("-", " ")
+
+        # Remove bullet point lines (lines starting with *, -, •, or numbered lists)
+        text = re.sub(r"^\s*[*•]\s+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*\d+[.)]\s+", "", text, flags=re.MULTILINE)
+
+        # Remove forbidden words (case-insensitive, whole word)
+        for word in FORBIDDEN_WORDS:
+            text = re.sub(rf"\b{re.escape(word)}\b", "", text, flags=re.IGNORECASE)
+
+        # Collapse multiple spaces into one
+        text = re.sub(r"  +", " ", text)
+
+        # Collapse excessive blank lines (more than 2 newlines → 2)
+        text = re.sub(r"(?:\r?\n\s*){3,}", "\n\n", text)
+
+        return text.strip()
+
+    async def _call_litellm(self, topic: str, context_string: str, telemetry) -> str:
+        """Call LiteLLM with provider cascade. Returns the raw JSON string response."""
+        import litellm
+
+        # Suppress LiteLLM's verbose internal logging
+        litellm.suppress_debug_info = True
+
+        user_message = f"Topic: {topic}\n\nContext: {context_string}"
+
+        messages = [
+            {"role": "system", "content": UNIFIED_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+        last_error = None
+        for i, model in enumerate(PROVIDER_CHAIN):
+            try:
+                logger.info(f"[LITELLM] Attempting model {model} ({i+1}/{len(PROVIDER_CHAIN)})...")
+                response = await litellm.acompletion(
+                    model=model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1500,
+                    response_format={"type": "json_object"},
+                )
+                result = response.choices[0].message.content
+                logger.info(f"[LITELLM] Success with {model}. Response length: {len(result)} chars")
+
+                if i > 0:
+                    telemetry.fallback_provider_used = model
+
+                return result
+
+            except Exception as exc:
+                last_error = exc
+                telemetry.retry_count += 1
+                logger.warning(f"[LITELLM] Model {model} failed: {exc}")
+                continue
+
+        # All providers exhausted
+        raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
+
+    def _parse_llm_json(self, raw_response: str) -> dict:
+        """Parse the structured JSON from the LLM response, with repair."""
+        # Strip markdown fences if present
+        cleaned = raw_response.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        try:
+            parsed = json.loads(cleaned)
+            if "draft" in parsed:
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt repair: find the first { and last }
+        first_brace = cleaned.find("{")
+        last_brace = cleaned.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            try:
+                parsed = json.loads(cleaned[first_brace:last_brace + 1])
+                if "draft" in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        # Last resort: treat the entire response as the draft
+        logger.warning("[JSON REPAIR] Could not parse JSON. Using raw text as draft.")
+        return {"draft": cleaned, "self_check": "JSON parsing failed, used raw text."}
 
     async def run(self, context: PipelineContext, commit_db: bool = True) -> ContentDraft:
         """Run all generation pipeline stages sequentially using the provided context.
@@ -142,141 +279,55 @@ class ContentGenerationPipeline:
         pipeline_metadata = self.prompt_builder.get_generation_metadata()
         self._log_stage("PROMPT_BUILD", context.trace_id, "SUCCESS", f"system={len(system_prompt)} chars, user={len(user_prompt)} chars")
 
-        # 3. LLM Generation (Two-Stage Cognitive Pipeline)
+        # 3. Single-Pass LiteLLM Generation
         self._log_stage("LLM_GENERATE", context.trace_id, "START")
         p_start = time.time()
-        
-        def inc_retry(attempt: int):
-            context.telemetry.retry_count += 1
-
-        async def call_llm(prompt_text: str, stage_name: str) -> str:
-            async def call_gemini():
-                import asyncio
-                from google import genai
-                gemini_key = self.gemini_api_key or "mock_gemini_key"
-                client = genai.Client(api_key=gemini_key)
-                def _sync_call():
-                    return client.interactions.create(
-                        model="gemini-3.5-flash",
-                        input=prompt_text,
-                    )
-                return await asyncio.to_thread(_sync_call)
-
-            try:
-                interaction = await execute_with_retry(
-                    call_gemini,
-                    circuit_breaker=self.gemini_breaker,
-                    max_retries=2,
-                    on_retry=inc_retry
-                )
-                return interaction.output_text
-            except Exception as exc:
-                error_str = str(exc).lower()
-                if "high demand" in error_str or "capacity" in error_str:
-                    logger.warning(f"[{stage_name} FALLBACK] Gemini capacity error: {exc}. Attempting Cohere fallback.")
-                else:
-                    logger.warning(f"[{stage_name} FALLBACK] Gemini primary error: {exc}. Attempting Cohere fallback.")
-                context.telemetry.fallback_provider_used = "cohere"
-                try:
-                    import cohere
-                    async def call_cohere():
-                        cohere_key = self.cohere_api_key or "mock_cohere_key"
-                        co = cohere.AsyncClientV2(api_key=cohere_key)
-                        return await co.chat(
-                            model="command-r",
-                            messages=[{"role": "user", "content": prompt_text}],
-                        )
-                    resp = await execute_with_retry(
-                        call_cohere,
-                        circuit_breaker=self.cohere_breaker,
-                        max_retries=2,
-                        on_retry=inc_retry
-                    )
-                    return next(
-                        (block.text for block in resp.message.content if hasattr(block, "text") and block.text),
-                        "",
-                    ) if (resp.message and resp.message.content) else ""
-                except Exception as cohere_err:
-                    logger.error(f"{stage_name} Cohere fallback also failed: {cohere_err}")
-                    from fastapi import HTTPException
-                    raise HTTPException(
-                        status_code=503,
-                        detail="All AI providers are temporarily unavailable. Please try again later."
-                    )
-
-        from app.services.generation.prompts.stage1_log import get_raw_log_prompt
-        from app.services.generation.prompts.stage2_compiler import get_compiler_prompt
 
         context_string = f"{system_prompt}\n\nAdditional Input: {user_prompt}"
-        stage1_prompt_text = get_raw_log_prompt(topic=context.topic, context=context_string)
-        
-        # STAGE 1: RAW LOG
-        self._log_stage("LLM_GENERATE_STAGE1", context.trace_id, "START")
-        raw_log = await call_llm(stage1_prompt_text, "STAGE1")
-        self._log_stage("LLM_GENERATE_STAGE1", context.trace_id, "SUCCESS")
-        
-        # TRACE: Stage 1 Raw Gemini Output
-        import hashlib
-        s1_hash = hashlib.sha256(raw_log.encode('utf-8')).hexdigest()[:8]
-        s1_char = len(raw_log)
-        s1_para = len([p for p in raw_log.split('\n\n') if p.strip()])
-        logger.info(f"[TRACE] [STAGE 1 RAW] chars={s1_char} | paras={s1_para} | hash={s1_hash} | end={repr(raw_log[-50:])}")
+        raw_response = await self._call_litellm(context.topic, context_string, context.telemetry)
 
-        # STAGE 2: COMPILER
-        self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "START")
-        
-        max_retries = 3
-        current_raw_log = raw_log
-        for attempt in range(max_retries):
-            stage2_prompt_text = get_compiler_prompt(raw_log=current_raw_log)
-            generated_text = await call_llm(stage2_prompt_text, "STAGE2")
-            
-            # Lexical Hard-Gate Check
-            failed_pattern = next((p for p in FORBIDDEN_PATTERNS if re.search(p, generated_text, re.MULTILINE)), None)
-            
-            if not failed_pattern:
-                break
-                
-            logger.warning(f"[LEXICAL GATE] Attempt {attempt + 1} failed. Caught forbidden pattern: {failed_pattern}")
-            # Add the failure feedback to the prompt for the next retry
-            current_raw_log += f"\n\n[SYSTEM FEEDBACK]: Your last attempt was rejected because it violated negative constraints. DO NOT use bullets or phrases like 'Maybe I'm wrong'."
-        else:
-            logger.error("[LEXICAL GATE] Max retries exhausted. Returning last draft.")
-            
-        self._log_stage("LLM_GENERATE_STAGE2", context.trace_id, "SUCCESS")
-        
         context.telemetry.provider_latency_ms = round((time.time() - p_start) * 1000, 2)
-        logger.info(f"[STAGE 2 - Gemini/Cohere] Generated final draft in {context.telemetry.provider_latency_ms}ms")
-        
-        # TRACE: Post Stage 2
-        s15_hash = hashlib.sha256(generated_text.encode('utf-8')).hexdigest()[:8]
-        s15_char = len(generated_text)
-        s15_para = len([p for p in generated_text.split('\n\n') if p.strip()])
-        logger.info(f"[TRACE] [POST STAGE 2] chars={s15_char} | paras={s15_para} | hash={s15_hash} | end={repr(generated_text[-50:])}")
-        
+        logger.info(f"[LITELLM] Generated draft in {context.telemetry.provider_latency_ms}ms")
+
+        # Parse the structured JSON response
+        parsed = self._parse_llm_json(raw_response)
+        generated_text = parsed.get("draft", "")
+        self_check = parsed.get("self_check", "")
+
+        if self_check:
+            logger.info(f"[SELF CHECK] {self_check}")
+
+        import hashlib
+        s1_hash = hashlib.sha256(generated_text.encode('utf-8')).hexdigest()[:8]
+        logger.info(f"[TRACE] [LLM OUTPUT] chars={len(generated_text)} | hash={s1_hash}")
+
+        self._log_stage("LLM_GENERATE", context.trace_id, "SUCCESS")
+
+        # 4. Deterministic Lexical Cleanup (replaces the old LLM retry loop)
+        self._log_stage("LEXICAL_CLEANUP", context.trace_id, "START")
+        generated_text = self._deterministic_cleanup(generated_text)
+        self._log_stage("LEXICAL_CLEANUP", context.trace_id, "SUCCESS", f"post_cleanup_chars={len(generated_text)}")
+
         # Override dynamic evaluation: hardcode requires_image = True for all pipeline executions
         context.requires_image = True
-        llm_output_metadata = {}
+        llm_output_metadata = {"self_check": self_check}
 
-        # The image prompt is no longer used, as we rely on Mermaid diagrams
+        # Image prompt is not used — router handles image generation independently
         context.image_prompt = None
 
-        # Stage 2 removed: Cohere is now only used as a Stage 1 fallback.
-        # generated_text goes directly to formatting — no second LLM rewrite.
-
-        # Format LinkedIn spacing
+        # 5. Format LinkedIn spacing
         self._log_stage("FORMAT", context.trace_id, "START")
         formatted_text = self.linkedin_formatter.format(generated_text)
         crushed_text = re.sub(r'(?:\r?\n\s*){2,}', '\n\n', formatted_text).strip()
         context.refined_text = crushed_text
-        
+
         # TRACE: LinkedIn Formatter
         s3_hash = hashlib.sha256(crushed_text.encode('utf-8')).hexdigest()[:8]
         s3_char = len(crushed_text)
         s3_para = len([p for p in crushed_text.split('\n\n') if p.strip()])
-        logger.info(f"[TRACE] [LINKEDIN FORMATTER] chars={s3_char} | paras={s3_para} | hash={s3_hash} | end={repr(crushed_text[-50:])}")
+        logger.info(f"[TRACE] [LINKEDIN FORMATTER] chars={s3_char} | paras={s3_para} | hash={s3_hash}")
 
-        # P3: Content-Preservation Gate
+        # 6. Content-Preservation Gate
         # Ensures no stage silently destroys content during formatting.
         pre_format_len = len(generated_text)
         post_format_len = len(crushed_text)
@@ -315,7 +366,7 @@ class ContentGenerationPipeline:
 
         self._log_stage("CONTENT_GATE", context.trace_id, "SUCCESS", f"{pre_format_len}→{post_format_len} chars, {pre_format_paras}→{post_format_paras} paras")
 
-        # 6. Validation Registry Stage
+        # 7. Validation Registry Stage
         self._log_stage("VALIDATE", context.trace_id, "START")
         if settings.ENABLE_VALIDATION:
             val_result = self.validator_registry.validate(
@@ -330,7 +381,7 @@ class ContentGenerationPipeline:
                 context.add_warning(warn)
         self._log_stage("VALIDATE", context.trace_id, "SUCCESS", f"errors={len(context.errors)}, warnings={len(context.warnings)}")
 
-        # 7. Deduplication & Content Metrics Stage
+        # 8. Deduplication & Content Metrics Stage
         self._log_stage("DEDUP", context.trace_id, "START")
         metrics = self.dedup_stage.calculate_metrics(context.refined_text)
         if settings.ENABLE_DEDUP and context.db:
@@ -343,18 +394,17 @@ class ContentGenerationPipeline:
                 logger.warning(f"[ASSERTION WARNING] Content deduplication flagged similarity score {sim_score:.2f}")
         self._log_stage("DEDUP", context.trace_id, "SUCCESS")
 
-        # 8. Image Generation Stage (Removed)
-        # Image generation is now handled asynchronously by the orchestrator (orchestrator.py)
-        # to decouple the generation and validation lifecycle.
+        # 9. Image Generation Stage (handled by orchestrator)
         self._log_stage("IMAGE_GEN", context.trace_id, "SKIPPED", "Handled by Orchestrator")
 
-        # 9. Store ContentDraft in Database
+        # 10. Store ContentDraft in Database
         self._log_stage("DB_PERSIST", context.trace_id, "START")
         context.telemetry.finish()
 
+        provider_used = context.telemetry.fallback_provider_used or PROVIDER_CHAIN[0]
         llm_metadata = {
             "trace_id": context.trace_id,
-            "model": "gemini-3.5-flash" if not context.telemetry.fallback_provider_used else f"cohere (fallback)",
+            "model": provider_used,
             "prompt_length": len(user_prompt) + len(system_prompt),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "requires_image": context.requires_image,
@@ -379,7 +429,7 @@ class ContentGenerationPipeline:
                 persona_id=context.persona.id if context.persona else None,
                 platform="linkedin",
                 content_text=context.refined_text,
-                status="GENERATING", # Orchestrator will finalize it to DRAFT
+                status="GENERATING", # Orchestrator will finalize it to DRAFT_READY
                 generated_at=datetime.now(timezone.utc),
                 llm_metadata=llm_metadata,
             )

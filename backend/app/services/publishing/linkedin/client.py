@@ -108,8 +108,14 @@ class LinkedInClient:
             raise e
 
     async def upload_image(self, account: LinkedInAccount, image_data: bytes | str, access_token: str) -> str:
-        """Upload raw image bytes to LinkedIn and return the image URN."""
+        """Upload raw image bytes to LinkedIn and return the image URN.
+        
+        Includes local preflight validation and post-upload asset status polling
+        to prevent silent 404 deletions from unprocessed media.
+        """
         import base64
+        import io
+        from PIL import Image
         
         # Guard: refuse image upload with mock/sandbox credentials
         if "mock" in (account.linkedin_person_urn or ""):
@@ -132,6 +138,23 @@ class LinkedInClient:
         
         if not _is_valid_image_format(image_bytes):
             raise ValueError("Invalid image format. LinkedIn requires raw PNG or JPEG bytes. Aborting upload to prevent post deletion.")
+        
+        # ── LOCAL PREFLIGHT VALIDATION ──
+        # Validate format and size BEFORE making any network calls.
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.format not in ("PNG", "JPEG"):
+                raise ValueError(f"Preflight failed: unsupported image format '{img.format}'. LinkedIn requires PNG or JPEG.")
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Preflight failed: could not parse image bytes: {e}")
+        
+        max_size = 5 * 1024 * 1024  # 5 MB
+        if len(image_bytes) >= max_size:
+            raise ValueError(f"Preflight failed: image too large ({len(image_bytes)} bytes). LinkedIn limit is {max_size} bytes.")
+        
+        logger.info(f"[IMAGE UPLOAD] Preflight PASSED: format={img.format}, size={len(image_bytes)} bytes")
         
         rest_headers = {
             "Authorization": f"Bearer {access_token}",
@@ -183,7 +206,48 @@ class LinkedInClient:
             
         logger.info(f"[IMAGE UPLOAD] PUT upload succeeded with status {put_resp.status_code}. URN: {image_urn}")
         
-        # Step 3: Return the imageUrn
+        # ── Step 3: ASSET STATUS POLLING ──
+        # Poll the image URN status endpoint until the asset is ACTIVE/AVAILABLE.
+        # This prevents the silent 404 deletion that occurs when publishing a post
+        # with an image that LinkedIn hasn't finished processing yet.
+        max_polls = 10
+        poll_interval_seconds = 3
+        
+        for poll_attempt in range(max_polls):
+            await asyncio.sleep(poll_interval_seconds)
+            
+            try:
+                async with httpx.AsyncClient() as client:
+                    status_resp = await client.get(
+                        f"{self.api_url}/rest/images/{image_urn}",
+                        headers=rest_headers,
+                    )
+                
+                if status_resp.status_code == 200:
+                    status_data = status_resp.json()
+                    asset_status = status_data.get("status", "UNKNOWN")
+                    logger.info(f"[IMAGE POLL] Attempt {poll_attempt + 1}/{max_polls}: status={asset_status}")
+                    
+                    if asset_status in ("ACTIVE", "AVAILABLE"):
+                        logger.info(f"[IMAGE POLL] Asset is ready: {asset_status}")
+                        break
+                    elif asset_status == "PROCESSING_FAILED":
+                        raise ValueError(f"LinkedIn image processing failed for URN {image_urn}.")
+                else:
+                    logger.warning(f"[IMAGE POLL] Status check returned HTTP {status_resp.status_code}. Retrying...")
+                    
+            except ValueError:
+                raise
+            except Exception as poll_err:
+                logger.warning(f"[IMAGE POLL] Poll attempt {poll_attempt + 1} error: {poll_err}. Retrying...")
+        else:
+            # Exhausted all polls without ACTIVE status
+            raise ValueError(
+                f"LinkedIn image processing timed out after {max_polls * poll_interval_seconds}s for URN {image_urn}. "
+                "Falling back to text-only post."
+            )
+        
+        # Step 4: Return the imageUrn
         return image_urn
 
     async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None, idempotency_key: str | None = None) -> str:

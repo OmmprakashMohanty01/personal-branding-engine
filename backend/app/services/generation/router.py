@@ -1,83 +1,79 @@
-import logging
-import json
-import base64
+"""
+router.py
+=========
+Simplified visual generation router with guaranteed output.
 
-from app.services.llm_provider import GeminiProvider
-from app.services.generation.image_director import get_visual_director_prompt
+Primary: Pollinations AI (FLUX model) for illustrative images.
+Fallback: Pure Python Pillow text card — zero external API calls, always succeeds.
+
+This replaces the old router that used Kroki/PlantUML, HF fallback,
+and an LLM-based Visual Director for routing decisions.
+"""
+
+import base64
+import logging
+
 from app.services.generation.providers.pollinations import generate_flux_image
-from app.services.generation.providers.hf_fallback import generate_hf_fallback
-from app.services.generation.providers.kroki import generate_kroki_diagram
-from app.services.generation.quality_gate import validate_image_bytes
+from app.services.generation.image_card import generate_quote_card
 
 logger = logging.getLogger(__name__)
 
+MIN_IMAGE_SIZE_BYTES = 5 * 1024  # 5KB minimum to reject error pages
+
+
 async def generate_visuals(post_content: str, use_fallback: bool = False) -> str | None:
+    """Generate an image for the post.
+
+    Strategy:
+    1. Try Pollinations AI (FLUX) for a real illustrative image.
+    2. If Pollinations fails or returns a tiny payload (< 5KB), fall back to
+       a locally-generated Pillow text card using the post hook.
+
+    Always returns a valid data URI string. Never returns None.
+
+    Args:
+        post_content: The full text of the LinkedIn post.
+        use_fallback: If True, skip Pollinations and go straight to Pillow fallback.
+
+    Returns:
+        A base64-encoded data URI (data:image/...) string.
     """
-    Analyzes the post and routes to the appropriate visual generator (Pollinations/HF for photo, Kroki for diagram).
-    Returns a data URI string (data:image/...) or None if no image should be generated / generation failed.
-    """
-    logger.info("[ROUTER] Calling Visual Director to determine visual medium...")
-    
-    # 1. Call Visual Director
-    director_prompt = get_visual_director_prompt(post_content)
-    llm = GeminiProvider()
-    director_response = await llm.generate(
-        prompt=post_content,
-        system_instruction=director_prompt,
-        temperature=0.2 # Lower temp for more deterministic JSON
-    )
-    
-    # Parse JSON
-    try:
-        # Try to extract JSON block if it's wrapped in markdown
-        cleaned_response = director_response.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
-        
-        routing_payload = json.loads(cleaned_response.strip())
-        visual_type = routing_payload.get("visual_type", "none").lower()
-        concept = routing_payload.get("concept", "")
-        prompt_or_code = routing_payload.get("prompt_or_code", "")
-    except Exception as e:
-        logger.error(f"[ROUTER] Failed to parse Visual Director JSON: {e}. Degrading to none.")
-        return None
-        
-    logger.info(f"[ROUTER] Decision: {visual_type.upper()} | Concept: {concept[:50]}...")
-    
-    if visual_type == "none" or not prompt_or_code:
-        return None
-        
-    raw_bytes = None
-    mime_type = "image/png"
-    
-    # 2. Route based on decision
-    if visual_type == "diagram":
-        logger.info("[ROUTER] Routing to Kroki (Mermaid.js)...")
-        raw_bytes = await generate_kroki_diagram(prompt_or_code)
-        mime_type = "image/svg+xml"
-    elif visual_type == "photo":
-        logger.info("[ROUTER] Routing to Pollinations (FLUX)...")
-        png_bytes = await generate_flux_image(prompt_or_code)
-        if validate_image_bytes(png_bytes):
-            raw_bytes = png_bytes
-            mime_type = "image/jpeg" # Pollinations usually returns JPEG
-        else:
-            logger.warning("[ROUTER] Pollinations failed or rejected by Quality Gate.")
-            logger.info("[ROUTER] Routing to HF Fallback...")
-            png_bytes = await generate_hf_fallback(prompt_or_code)
-            if validate_image_bytes(png_bytes):
-                raw_bytes = png_bytes
-                mime_type = "image/png"
+    if not use_fallback:
+        try:
+            logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
+            # Build a concise image prompt from the post content
+            # Take the first 200 chars as a seed for the image concept
+            image_seed = post_content[:200].replace("\n", " ").strip()
+            image_prompt = f"Abstract minimalist tech illustration: {image_seed}"
+
+            png_bytes = await generate_flux_image(image_prompt)
+
+            if png_bytes and len(png_bytes) >= MIN_IMAGE_SIZE_BYTES:
+                logger.info(f"[ROUTER] Pollinations succeeded. Image size: {len(png_bytes)} bytes")
+                b64_str = base64.b64encode(png_bytes).decode("utf-8")
+
+                # Detect MIME type from magic bytes
+                if png_bytes.startswith(b"\xff\xd8\xff"):
+                    mime_type = "image/jpeg"
+                else:
+                    mime_type = "image/png"
+
+                return f"data:{mime_type};base64,{b64_str}"
             else:
-                logger.error("[ROUTER] HF Fallback failed or rejected by Quality Gate.")
-    else:
-        logger.warning(f"[ROUTER] Unknown visual_type: {visual_type}. Defaulting to none.")
-        
-    # 3. Process final output
-    if raw_bytes:
-        b64_str = base64.b64encode(raw_bytes).decode('utf-8')
-        return f"data:{mime_type};base64,{b64_str}"
-        
-    return None
+                size = len(png_bytes) if png_bytes else 0
+                logger.warning(f"[ROUTER] Pollinations returned insufficient data ({size} bytes < {MIN_IMAGE_SIZE_BYTES}). Falling back to Pillow.")
+
+        except Exception as e:
+            logger.warning(f"[ROUTER] Pollinations failed: {e}. Falling back to Pillow text card.")
+
+    # ── GUARANTEED FALLBACK: Pillow Text Card ──
+    # This never fails — it uses only local Python libraries.
+    logger.info("[ROUTER] Generating Pillow text card fallback...")
+    try:
+        data_uri = generate_quote_card(post_content)
+        logger.info("[ROUTER] Pillow text card generated successfully.")
+        return data_uri
+    except Exception as e:
+        # This should effectively never happen, but handle gracefully
+        logger.error(f"[ROUTER] Even Pillow fallback failed: {e}. Returning None.")
+        return None

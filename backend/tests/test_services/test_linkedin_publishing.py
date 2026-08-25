@@ -316,7 +316,7 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
 
     client = LinkedInClient()
     
-    with patch("httpx.AsyncClient.post") as mock_post, patch("httpx.AsyncClient.put") as mock_put:
+    with patch("httpx.AsyncClient.post") as mock_post, patch("httpx.AsyncClient.put") as mock_put, patch("httpx.AsyncClient.get") as mock_get:
         # Mock /rest/images?action=initializeUpload response (modern API)
         mock_init_resp = MagicMock(status_code=200)
         mock_init_resp.json.return_value = {
@@ -326,9 +326,17 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
             }
         }
         
+        # Mock GET /rest/images/{image_urn} polling response
+        mock_poll_resp = MagicMock(status_code=200)
+        mock_poll_resp.json.return_value = {
+            "status": "AVAILABLE"
+        }
+        mock_get.return_value = mock_poll_resp
+        
         # Mock /rest/posts response
         mock_posts_resp = MagicMock(status_code=201)
         mock_posts_resp.headers = {"x-restli-id": "urn:li:share:post_123_abc"}
+        mock_posts_resp.json.return_value = {"id": "urn:li:share:post_123_abc"}
         
         # initializeUpload POST first, then /rest/posts POST
         mock_post.side_effect = [mock_init_resp, mock_posts_resp]
@@ -337,8 +345,12 @@ async def test_publish_post_with_image_upload(db_session: AsyncSession):
         mock_put.return_value = mock_put_resp
         
         import base64
-        expected_bytes = b'\x89PNG\r\n\x1a\n' + b"a" * 1500
-        image_base64 = "data:image/jpeg;base64," + base64.b64encode(expected_bytes).decode("utf-8")
+        import io
+        from PIL import Image
+        img_buf = io.BytesIO()
+        Image.new("RGB", (100, 100), color="blue").save(img_buf, format="PNG")
+        expected_bytes = img_buf.getvalue()
+        image_base64 = "data:image/png;base64," + base64.b64encode(expected_bytes).decode("utf-8")
         post_text_long = "This is a very long commentary designed to satisfy the strict length check assert of 100 characters in the publish_post method. It needs to be sufficiently descriptive to bypass validation."
         post_urn = await client.publish_post(db_session, account, post_text_long, image_url=image_base64)
         

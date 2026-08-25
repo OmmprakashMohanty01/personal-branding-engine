@@ -1,119 +1,149 @@
-import asyncio
+"""
+orchestrator.py
+===============
+Synchronous generation orchestrator — replaces the old BackgroundTasks pattern.
+
+Provides `run_pipeline_sync()` as the single entry point for both manual
+and automated generation. Manages an explicit database state machine:
+
+    PENDING → GENERATING → DRAFT_READY → MEDIA_UPLOADING → MEDIA_VALIDATED
+
+Each state transition is committed to the database immediately so that
+crashes at any point leave a recoverable breadcrumb.
+"""
+
+import copy
 import logging
+import time
 import traceback
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import AsyncSessionLocal
+
 from app.models.content import ContentDraft
 from app.services.generation.pipeline import ContentGenerationPipeline
 from app.services.generation.context import PipelineContext
 
 logger = logging.getLogger("branding_engine.generation.orchestrator")
 
-async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContext):
+
+async def _update_draft_status(db: AsyncSession, draft: ContentDraft, new_status: str):
+    """Atomically update draft status and commit."""
+    draft.status = new_status
+    await db.commit()
+    await db.refresh(draft)
+    logger.info(f"[STATE MACHINE] Draft {draft.id} → {new_status}")
+
+
+async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContext, db: AsyncSession):
     """
-    Handles Phase 3: Image Generation & Semantic Quality Gate.
-    Mutates the draft in-place with the final image and vision score.
+    Handles image generation using the simplified Pollinations + Pillow router.
+    Updates draft status through MEDIA_UPLOADING → MEDIA_VALIDATED.
+    Mutates the draft in-place with the final image URL.
     """
     if not context.requires_image:
         return
 
+    # ── MEDIA_UPLOADING ──
+    await _update_draft_status(db, draft, "MEDIA_UPLOADING")
+
     from app.services.generation.router import generate_visuals
-    from app.services.generation.vision_gate import evaluate_image_alignment
-    
-    max_retries = 2
-    attempts = 0
-    final_image_url = None
-    final_vision_score = None
-    final_vision_reason = None
-    
-    while attempts <= max_retries:
-        logger.info(f"[ORCHESTRATOR] Generating visual (Attempt {attempts + 1}/{max_retries + 1})...")
-        # Use fallback on first generation if telemetry says text gen fell back, otherwise normal.
-        use_fallback = context.telemetry.fallback_provider_used if attempts == 0 else True 
-        image_data_uri = await generate_visuals(draft.content_text, use_fallback=use_fallback)
-        
-        if not image_data_uri:
-            logger.warning("[ORCHESTRATOR] generate_visuals returned None.")
-            final_vision_reason = "Image generation failed to return an image."
-            break
-            
-        # Evaluate image
-        logger.info("[ORCHESTRATOR] Evaluating image with Vision Gate...")
-        vision_result = await evaluate_image_alignment(draft.content_text, image_data_uri)
-        
-        final_vision_score = vision_result.get("score")
-        final_vision_reason = vision_result.get("reason")
-        passed = vision_result.get("passed", False)
-        
-        if passed:
-            logger.info(f"[ORCHESTRATOR] Vision Gate PASSED! Score: {final_vision_score}")
-            final_image_url = image_data_uri
-            break
-        else:
-            logger.warning(f"[ORCHESTRATOR] Vision Gate FAILED. Reason: {final_vision_reason}")
-            attempts += 1
-    
-    # Assign final results to draft
-    if final_image_url:
-        draft.llm_metadata["image_url"] = final_image_url
-        draft.vision_score = final_vision_score
-        draft.vision_reasoning = final_vision_reason
+
+    img_start = time.time()
+    logger.info("[ORCHESTRATOR] Generating visual via simplified router...")
+
+    # Use fallback (skip Pollinations, go straight to Pillow) if text gen already fell back
+    use_fallback = bool(context.telemetry.fallback_provider_used)
+    image_data_uri = await generate_visuals(draft.content_text, use_fallback=use_fallback)
+
+    context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
+
+    if image_data_uri:
+        logger.info(f"[ORCHESTRATOR] Visual generated successfully in {context.telemetry.image_generation_latency_ms}ms")
+        draft.llm_metadata = copy.deepcopy(draft.llm_metadata or {})
+        draft.llm_metadata["image_url"] = image_data_uri
     else:
-        logger.warning("[ORCHESTRATOR] Max retries exhausted or image generation completely failed. Downgrading to text-only.")
+        logger.warning("[ORCHESTRATOR] Visual generation returned None. Proceeding as text-only.")
+        draft.llm_metadata = copy.deepcopy(draft.llm_metadata or {})
         draft.llm_metadata["image_url"] = None
-        draft.llm_metadata["warning"] = f"Image generation degraded to text-only. Last Vision Gate reason: {final_vision_reason}"
-        draft.vision_score = final_vision_score
-        draft.vision_reasoning = final_vision_reason
+        draft.llm_metadata["warning"] = "Image generation failed. Publishing as text-only."
 
-async def run_pipeline_background(draft_id: str, topic: str, persona_id: str, trace_id: str):
+    # ── MEDIA_VALIDATED ──
+    await _update_draft_status(db, draft, "MEDIA_VALIDATED")
+
+
+async def run_pipeline_sync(
+    db: AsyncSession,
+    draft: ContentDraft,
+    topic: str,
+    persona_id: str | None,
+    trace_id: str,
+) -> ContentDraft:
+    """Synchronous pipeline execution — the single entry point for generation.
+
+    Runs the full generation + visual pipeline inline (no BackgroundTasks).
+    Manages explicit state transitions committed to DB at each step.
+
+    State machine:
+        PENDING → GENERATING → DRAFT_READY → MEDIA_UPLOADING → MEDIA_VALIDATED
+
+    Args:
+        db: Active database session.
+        draft: Pre-created ContentDraft record (status=PENDING).
+        topic: The topic/prompt for content generation.
+        persona_id: Optional persona UUID.
+        trace_id: Correlation ID for logging.
+
+    Returns:
+        The fully updated ContentDraft with status=MEDIA_VALIDATED (or DRAFT_READY if no image).
+
+    Raises:
+        Exception: Re-raises any pipeline error after marking the draft as FAILED.
     """
-    Background worker to execute the generation pipeline.
-    This runs after the initial 202 Accepted response.
-    """
-    logger.info(f"[BACKGROUND WORKER] Started for draft {draft_id}, topic: '{topic}'")
-    
-    async with AsyncSessionLocal() as db:
+    logger.info(f"[SYNC PIPELINE] Started for draft {draft.id}, topic: '{topic}', trace: {trace_id}")
+
+    try:
+        # ── GENERATING ──
+        await _update_draft_status(db, draft, "GENERATING")
+
+        pipeline = ContentGenerationPipeline()
+        context = PipelineContext(
+            topic=topic,
+            db=db,
+            persona_id=persona_id,
+            trace_id=trace_id,
+            draft=draft,
+        )
+        context.requires_image = True
+
+        # Run the LLM generation pipeline (commits internally)
+        draft = await pipeline.run(context, commit_db=True)
+
+        # ── DRAFT_READY ──
+        await _update_draft_status(db, draft, "DRAFT_READY")
+
+        # ── PHASE 2: IMAGE GENERATION ──
+        await process_visuals_for_draft(draft, context, db)
+
+        logger.info(
+            f"[SYNC PIPELINE] Completed for draft {draft.id}. "
+            f"Final status: {draft.status}"
+        )
+        return draft
+
+    except Exception as e:
+        logger.error(f"[SYNC PIPELINE CRASH] Pipeline failed for draft {draft.id}: {e}")
+        logger.error(traceback.format_exc())
+
+        # Mark as FAILED — try to commit, but don't crash if DB is broken
         try:
-            # Re-fetch the draft to ensure it exists
-            draft = await db.get(ContentDraft, draft_id)
-            if not draft:
-                logger.error(f"[BACKGROUND WORKER] Draft {draft_id} not found in DB!")
-                return
-                
-            pipeline = ContentGenerationPipeline()
-            context = PipelineContext(
-                topic=topic,
-                db=db,
-                persona_id=persona_id,
-                trace_id=trace_id,
-                draft=draft
-            )
-            
-            # The pipeline will use the passed draft and update its status to GENERATING
-            draft = await pipeline.run(context)
-            
-            # --- PHASE 3: IMAGE GENERATION & SEMANTIC QUALITY GATE ---
-            await process_visuals_for_draft(draft, context)
-                    
-            # Set final status
-            draft.status = "DRAFT"
-            
-            # Since draft.llm_metadata is a JSON field, SQLAlchemy needs to know it was modified
-            # if we updated it in place, but SQLAlchemy often tracks dictionary mutations if configured.
-            # However, to be safe, reassign it.
-            # Using dict() creates a shallow copy which triggers the update event.
-            import copy
-            draft.llm_metadata = copy.deepcopy(draft.llm_metadata)
-
+            draft.status = "FAILED"
+            # Store the failure stage in metadata for diagnostics
+            meta = copy.deepcopy(draft.llm_metadata or {})
+            meta["failure_error"] = str(e)
+            draft.llm_metadata = meta
             await db.commit()
-            
-            logger.info(f"[BACKGROUND WORKER] Completed for draft {draft_id}")
+            await db.refresh(draft)
+        except Exception as db_err:
+            logger.error(f"[SYNC PIPELINE] Failed to mark draft as FAILED: {db_err}")
 
-        except Exception as e:
-            logger.error(f"[BACKGROUND CRASH] Pipeline failed for draft {draft_id}: {e}")
-            logger.error(traceback.format_exc())
-            # Fetch draft again in case of detached instance
-            draft = await db.get(ContentDraft, draft_id)
-            if draft:
-                draft.status = "FAILED"
-                await db.commit()
+        raise

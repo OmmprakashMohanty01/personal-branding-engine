@@ -7,7 +7,7 @@ import json
 import time
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Header, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models.content import ContentDraft
 from app.schemas.generation import GenerateRequest, DraftUpdatePayload, DraftResponse, ImageGenerateRequest
 from app.services.generation.context import PipelineContext
-from app.services.generation.orchestrator import run_pipeline_background
+from app.services.generation.orchestrator import run_pipeline_sync
 from app.services.publishing.orchestrator import PublishingOrchestrator
 from datetime import datetime, timezone
 
@@ -52,7 +52,7 @@ async def get_live_news():
         ]
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
-    """Generate an image using the Visual Director and Gemini Image API."""
+    """Generate an image using the simplified Pollinations + Pillow router."""
     from app.services.generation.router import generate_visuals
 
     logger.info(f"[IMAGE GEN] Requesting Visual Router for topic '{topic}'...")
@@ -61,7 +61,7 @@ async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str
     if not image_url:
         raise HTTPException(
             status_code=502,
-            detail="Image generation service is temporarily unavailable or Visual Director decided no image was needed."
+            detail="Image generation service is temporarily unavailable."
         )
     
     return image_url
@@ -73,7 +73,7 @@ async def generate_image_endpoint(
     request: Request,
     x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
-    """Generate a premium metaphorical illustration for a given topic using Hugging Face FLUX.1-schnell."""
+    """Generate a premium metaphorical illustration for a given topic."""
     run_id = x_run_id or f"manual_img_{int(time.time())}"
     logger.debug(f"generate_image_endpoint invoked for topic: {payload.topic} [RunID: {run_id}]")
     try:
@@ -90,37 +90,64 @@ async def generate_image_endpoint(
             content={"status": "error", "image_url": None, "message": "Image generation currently unavailable."}
         )
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", status_code=status.HTTP_200_OK)
 async def generate_content(
     payload: GenerateRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
-    """Generate a LinkedIn post draft asynchronously."""
+    """Generate a LinkedIn post draft synchronously.
+    
+    Runs the full generation pipeline inline (no background tasks).
+    Returns 200 OK with the completed draft, or 500 with the failure stage.
+    
+    State machine: PENDING → GENERATING → DRAFT_READY → MEDIA_UPLOADING → MEDIA_VALIDATED
+    """
     run_id = x_run_id or f"manual_gen_{int(time.time())}"
-    logger.info(f"Manual generation started for topic: {payload.topic} [RunID: {run_id}]")
-    try:
-        # Create pending draft
-        draft = ContentDraft(
-            persona_id=payload.persona_id,
-            platform="linkedin",
-            content_text="",
-            status="GENERATING",
-            generated_at=datetime.now(timezone.utc),
-            llm_metadata={"topic": payload.topic, "trace_id": run_id}
-        )
-        db.add(draft)
-        await db.commit()
-        await db.refresh(draft)
+    logger.info(f"Synchronous generation started for topic: {payload.topic} [RunID: {run_id}]")
 
-        # Queue the heavy generation task
-        background_tasks.add_task(run_pipeline_background, str(draft.id), payload.topic, payload.persona_id, run_id)
-        
-        return {"message": "Draft generation started", "draft_id": str(draft.id), "status": "GENERATING"}
+    # Create PENDING draft
+    draft = ContentDraft(
+        persona_id=payload.persona_id,
+        platform="linkedin",
+        content_text="",
+        status="PENDING",
+        generated_at=datetime.now(timezone.utc),
+        llm_metadata={"topic": payload.topic, "trace_id": run_id}
+    )
+    db.add(draft)
+    await db.commit()
+    await db.refresh(draft)
+
+    try:
+        # Run the full pipeline synchronously
+        draft = await run_pipeline_sync(
+            db=db,
+            draft=draft,
+            topic=payload.topic,
+            persona_id=payload.persona_id,
+            trace_id=run_id,
+        )
+
+        logger.info(f"Synchronous generation completed. Draft {draft.id} status: {draft.status}")
+        return {
+            "message": "Draft generation completed",
+            "draft_id": str(draft.id),
+            "status": draft.status,
+            "content_text": draft.content_text,
+            "image_url": (draft.llm_metadata or {}).get("image_url"),
+        }
+
     except Exception as e:
-        logger.error(f"Failed to start generation: {e}")
-        raise HTTPException(status_code=500, detail=f"Generation failed to start: {str(e)}")
+        logger.error(f"Synchronous generation failed at stage '{draft.status}': {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "stage": draft.status,
+                "error": str(e),
+                "draft_id": str(draft.id),
+            }
+        )
 
 @router.get("/drafts", response_model=List[DraftResponse])
 async def list_drafts(

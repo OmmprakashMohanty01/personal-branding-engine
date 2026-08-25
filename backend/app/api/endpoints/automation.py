@@ -2,7 +2,7 @@
 automation.py
 =============
 Automated Content Draft & Daily Publishing Endpoint with Idempotency,
-Constant-Time Secret Authentication, and Pipeline Integration.
+Constant-Time Secret Authentication, and Synchronous Pipeline Integration.
 """
 
 import datetime
@@ -10,6 +10,7 @@ import hmac
 import logging
 import os
 import uuid
+import copy
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -19,13 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import text
 
-from app.api.endpoints.generation import generate_metaphorical_image_helper
 from app.config import settings
 from app.database import get_db
 from app.models.content import ContentDraft
 from app.schemas.generation import DraftResponse, AutomationResponse
-from app.services.generation.context import PipelineContext
-from app.services.generation.pipeline import ContentGenerationPipeline
+from app.services.generation.orchestrator import run_pipeline_sync
 from app.services.publishing.orchestrator import PublishingOrchestrator
 
 router = APIRouter(prefix="/automation", tags=["Automation"])
@@ -97,7 +96,7 @@ async def generate_daily(
     x_run_id: Optional[str] = Header(None, alias="X-Run-ID"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Production automated daily generation endpoint with idempotency checks and pipeline execution."""
+    """Production automated daily generation endpoint with idempotency checks and synchronous pipeline execution."""
     verify_cron_secret(request, cron_secret_key, x_cron_secret)
 
     weekday = datetime.datetime.today().weekday()
@@ -125,15 +124,15 @@ async def generate_daily(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={"detail": "Another automation process is currently running. Please try again later."},
             )
-        # If DRAFT or FAILED, we fall through and retry publishing.
-        logger.info(f"[DAILY AUTOMATION RESUMPTION] Found existing draft {existing_draft.id} with status {existing_draft.status}. Resuming publish.")
+        # If DRAFT_READY, MEDIA_VALIDATED, PENDING, or FAILED, we fall through and retry.
+        logger.info(f"[DAILY AUTOMATION RESUMPTION] Found existing draft {existing_draft.id} with status {existing_draft.status}. Resuming.")
 
     if not existing_draft:
         try:
             # Create a placeholder to lock this date globally across all workers
             new_draft = ContentDraft(
                 idempotency_key=idempotency_key,
-                status="GENERATING",
+                status="PENDING",
                 content_text="",
                 platform="linkedin",
                 generated_at=now,
@@ -167,27 +166,20 @@ async def generate_daily(
         draft = existing_draft
         
         # Only run generation if we haven't generated yet
-        if draft.status == "GENERATING" or not draft.content_text:
-            pipeline = ContentGenerationPipeline()
-            # We pass run_id as trace_id for downstream logging correlation
-            context = PipelineContext(topic=topic, db=db, trace_id=run_id, draft=draft)
-            
-            # HARDCODE OVERRIDE: Force image generation for all daily automated posts
-            context.requires_image = True
-            
-            # generate the draft and commit to db (checkpoint)
-            draft = await pipeline.run(context, commit_db=True)
-            
-            from app.services.generation.orchestrator import process_visuals_for_draft
-            await process_visuals_for_draft(draft, context)
+        if draft.status in ("PENDING", "GENERATING") or not draft.content_text:
+            # Run the synchronous pipeline (handles full state machine internally)
+            draft = await run_pipeline_sync(
+                db=db,
+                draft=draft,
+                topic=topic,
+                persona_id=None,
+                trace_id=run_id,
+            )
             
             # Ensure run_id is persisted in llm_metadata
-            meta = dict(draft.llm_metadata or {})
+            meta = copy.deepcopy(draft.llm_metadata or {})
             meta["run_id"] = run_id
             draft.llm_metadata = meta
-            
-            import copy
-            draft.llm_metadata = copy.deepcopy(draft.llm_metadata)
             await db.commit()
         else:
             is_resumed_draft = True
@@ -199,7 +191,7 @@ async def generate_daily(
                 status="draft_created",
                 draft_id=draft.id,
                 character_count=len(draft.content_text),
-                image_uploaded=bool(draft.llm_metadata.get("image_url")),
+                image_uploaded=bool((draft.llm_metadata or {}).get("image_url")),
                 trace_id=run_id
             )
             
@@ -209,9 +201,13 @@ async def generate_daily(
                 status="draft_created",
                 draft_id=draft.id,
                 character_count=len(draft.content_text),
-                image_uploaded=bool(draft.llm_metadata.get("image_url")),
+                image_uploaded=bool((draft.llm_metadata or {}).get("image_url")),
                 trace_id=run_id
             )
+        
+        # ── PUBLISHING STATE ──
+        draft.status = "PUBLISHING"
+        await db.commit()
         
         # publish! The orchestrator handles its own commit/rollback inside publish_draft
         publishing_orchestrator = PublishingOrchestrator()
@@ -249,7 +245,7 @@ async def generate_daily(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Daily automation draft generation failed: {str(e)}",
+            detail=f"Daily automation failed at stage '{draft.status}': {str(e)}",
         )
 
 @router.get("/dashboard")
