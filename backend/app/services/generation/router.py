@@ -22,24 +22,16 @@ logger = logging.getLogger(__name__)
 
 MIN_IMAGE_SIZE_BYTES = 5 * 1024  # 5KB minimum to reject error pages
 
-BANNED_TERMS = [
-    "database", "api", "cloud", "telemetry", "ingestion", "pipeline",
-    "endpoint", "cache", "microservice", "algorithm", "software",
-    "query", "schema", "deployment", "cluster", "backend", "frontend",
-]
-FALLBACK_SCENE = "a minimalist desk with a glowing monitor in a dim room, close-up, shallow depth of field"
 REQUIRED_MODIFIERS = "highly detailed, 8k, photorealistic, cinematic lighting, shallow depth of field"
 
 
 def sanitize_image_prompt(raw_prompt: str) -> str:
-    lowered = raw_prompt.lower()
-    if any(re.search(rf"\b{term}\b", lowered) for term in BANNED_TERMS):
-        scene = FALLBACK_SCENE
-    else:
-        scene = raw_prompt.strip()
-
+    # Trust the LLM's physical description, just ensure high-quality modifiers
+    scene = raw_prompt.strip()
+    
     if REQUIRED_MODIFIERS not in scene:
         scene = f"{scene}, {REQUIRED_MODIFIERS}"
+        
     return scene[:300]
 
 
