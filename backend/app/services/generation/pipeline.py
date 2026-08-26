@@ -386,7 +386,7 @@ class ContentGenerationPipeline:
             val_result = self.validator_registry.validate(
                 content_text=context.refined_text,
                 requires_image=context.requires_image,
-                image_prompt=context.image_prompt or "",
+                image_prompt=getattr(context, "visual_payload", "") or "",
                 author_context=self.prompt_builder._last_author_context,
             )
             for err in val_result.errors:

@@ -65,6 +65,7 @@ class PipelineContext:
     mermaid_diagram: Optional[str] = None
     visual_type: Optional[str] = None
     visual_payload: Optional[str] = None
+    image_prompt: Optional[str] = None
     image_url: Optional[str] = None
 
     # Metadata & Tracking
