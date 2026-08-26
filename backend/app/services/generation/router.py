@@ -44,7 +44,7 @@ def sanitize_image_prompt(raw_prompt: str) -> str:
 
 
 
-async def generate_visuals(draft_data: dict, use_fallback: bool = False) -> str | None:
+async def generate_visuals(draft_data: dict | str, use_fallback: bool = False) -> str | None:
     """Generate an image for the post.
 
     Strategy:
@@ -56,15 +56,20 @@ async def generate_visuals(draft_data: dict, use_fallback: bool = False) -> str 
     Always returns a valid data URI string. Never returns None.
 
     Args:
-        draft_data: Dict with visual_type, visual_payload, and post_content.
+        draft_data: Dict with visual_type, visual_payload, and post_content, OR a raw string prompt.
         use_fallback: If True, skip generation and go straight to Pillow fallback.
 
     Returns:
         A base64-encoded data URI (data:image/...) string.
     """
-    visual_type = draft_data.get("visual_type")
-    payload = draft_data.get("visual_payload")
-    post_content = draft_data.get("post_content", "")
+    if isinstance(draft_data, str):
+        visual_type = "photo"
+        payload = draft_data
+        post_content = draft_data
+    else:
+        visual_type = draft_data.get("visual_type")
+        payload = draft_data.get("visual_payload")
+        post_content = draft_data.get("post_content", "")
 
     if not use_fallback:
         if visual_type == "diagram" and payload:
