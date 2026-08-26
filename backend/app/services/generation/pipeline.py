@@ -47,9 +47,8 @@ litellm.suppress_debug_info = True
 # ── LiteLLM Provider Cascade ──
 # Each entry is a LiteLLM model string. We try them in order until one succeeds.
 PROVIDER_CHAIN = [
-    "gemini/gemini-2.5-flash-lite",
-    "groq/llama-3.3-70b-versatile",
-    "groq/llama-3.1-8b-instant",
+    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.5-flash",
 ]
 
 FORBIDDEN_PATTERNS = [
