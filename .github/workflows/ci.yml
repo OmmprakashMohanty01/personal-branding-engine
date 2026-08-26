@@ -43,3 +43,5 @@ jobs:
           GROQ_API_KEY: dummy_groq_key_for_testing
           ENABLE_LINKEDIN_PUBLISHING: 'False'
           AUTO_PUBLISH_ENABLED: 'False'
+          LINKEDIN_CLIENT_ID: "dummy_linkedin_id"
+          LINKEDIN_CLIENT_SECRET: "dummy_linkedin_secret"
