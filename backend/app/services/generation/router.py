@@ -42,7 +42,8 @@ async def generate_visuals(draft_data: dict | str, use_fallback: bool = False) -
     Strategy:
     1. If visual_type == 'diagram', try Kroki (PlantUML).
     2. If visual_type == 'photo', try Pollinations AI (FLUX).
-    3. If generation fails or returns a tiny payload (< 5KB), fall back to
+    3. If visual_type == 'card', generate a local Pillow typography quote card.
+    4. If generation fails or returns a tiny payload (< 5KB), fall back to
        a locally-generated Pillow text card using the post hook.
 
     Always returns a valid data URI string. Never returns None.
@@ -55,12 +56,12 @@ async def generate_visuals(draft_data: dict | str, use_fallback: bool = False) -
         A base64-encoded data URI (data:image/...) string.
     """
     if isinstance(draft_data, str):
-        visual_type = "photo"
+        visual_type = "card"
         payload = draft_data
         post_content = draft_data
     else:
-        visual_type = draft_data.get("visual_type")
-        payload = draft_data.get("visual_payload")
+        visual_type = draft_data.get("visual_type", "card")
+        payload = draft_data.get("visual_payload", "")
         post_content = draft_data.get("post_content", "")
 
     if not use_fallback:
@@ -88,7 +89,7 @@ async def generate_visuals(draft_data: dict | str, use_fallback: bool = False) -
                         logger.warning(f"[ROUTER] Kroki returned insufficient data ({size} bytes). Falling back to Pillow.")
             except Exception as e:
                 logger.warning(f"[ROUTER] Kroki failed: {e}. Falling back to Pillow text card.")
-        else:
+        elif visual_type == "photo":
             try:
                 logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
                 
@@ -118,6 +119,16 @@ async def generate_visuals(draft_data: dict | str, use_fallback: bool = False) -
 
             except Exception as e:
                 logger.warning(f"[ROUTER] Pollinations failed: {e}. Falling back to Pillow text card.")
+        elif visual_type == "card":
+            logger.info("[ROUTER] Generating native typography quote card...")
+            try:
+                # Use payload (the extracted quote) for the card, fallback to post_content if empty
+                text_for_card = payload if payload else post_content
+                data_uri = generate_quote_card(text_for_card)
+                logger.info("[ROUTER] Typography card generated successfully.")
+                return data_uri
+            except Exception as e:
+                logger.error(f"[ROUTER] Typography card generation failed: {e}. Falling back.")
 
     # ── GUARANTEED FALLBACK: Pillow Text Card ──
     # This never fails — it uses only local Python libraries.

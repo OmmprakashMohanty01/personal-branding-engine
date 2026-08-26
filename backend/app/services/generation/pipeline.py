@@ -85,19 +85,22 @@ End the post by asking a single, specific question inviting the audience to shar
 
 OUTPUT FORMAT:
 Respond with ONLY a JSON object (no markdown fences, no extra text):
-{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "visual_type": "<'diagram' or 'photo'>", "visual_payload": "<PlantUML code or scene description>"}
+{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "visual_type": "<'diagram', 'photo', or 'card'>", "visual_payload": "<PlantUML code, scene description, or quote hook>"}
 
 THIRD & FOURTH FIELDS — visual_type and visual_payload:
-You must determine the best visual to accompany your post. 
+Choose the best visual strategy:
 
-If the post is about software architecture, backend systems, APIs, or data flow:
-- Set "visual_type" to "diagram".
-- Set "visual_payload" to clean, valid PlantUML syntax (e.g., @startuml ... @enduml).
-- Ensure the diagram explicitly maps the technologies mentioned in the post (e.g., FastAPI, PostgreSQL, Render).
+1. SOFTWARE ARCHITECTURE / SYSTEM DESIGN:
+- visual_type: "diagram"
+- visual_payload: Valid PlantUML code mapping the technologies discussed.
 
-If the post is about physical hardware, nature, or real-world objects:
-- Set "visual_type" to "photo".
-- Set "visual_payload" to a concrete, physical scene description (max 40 words) ending with "highly detailed, 8k, photorealistic".
+2. PHYSICAL OBJECTS / HARDWARE (e.g., Wearables, Mainframes):
+- visual_type: "photo"
+- visual_payload: Concrete physical description ending with "highly detailed, 8k, photorealistic". DO NOT use desk/laptop fallbacks.
+
+3. ABSTRACT TECH, STORIES, LOGGING, OPINIONS:
+- visual_type: "card"
+- visual_payload: Extract a punchy, thought-provoking quote (10-15 words) directly from your draft. No quotes marks.
 """
 
 
