@@ -96,7 +96,11 @@ Choose the best visual strategy:
 
 2. PHYSICAL OBJECTS / HARDWARE (e.g., Wearables, Mainframes):
 - visual_type: "photo"
-- visual_payload: Concrete physical description ending with "highly detailed, 8k, photorealistic". DO NOT use desk/laptop fallbacks.
+- visual_payload: A concrete physical description ending with "highly detailed, 8k, photorealistic, cinematic lighting".
+- CRITICAL RULE FOR PHOTOS: NEVER use proprietary brand names, company names, or specific product models (e.g., Apple, IBM, M6, Nvidia) in the image prompt. AI diffusion models hallucinate brands into plastic garbage. 
+- Instead, describe the RAW MATERIALS and AESTHETICS. 
+  - BAD: "An Apple M6 silicon chip"
+  - GOOD: "A macro photograph of an iridescent silicon wafer with glowing microscopic circuitry, neon blue lighting, cleanroom environment"
 
 3. ABSTRACT TECH, STORIES, LOGGING, OPINIONS:
 - visual_type: "card"
