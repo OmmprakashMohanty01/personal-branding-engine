@@ -44,55 +44,83 @@ def sanitize_image_prompt(raw_prompt: str) -> str:
 
 
 
-async def generate_visuals(post_content: str, use_fallback: bool = False, image_prompt: str | None = None) -> str | None:
+async def generate_visuals(draft_data: dict, use_fallback: bool = False) -> str | None:
     """Generate an image for the post.
 
     Strategy:
-    1. Try Pollinations AI (FLUX) for a real illustrative image.
-    2. If Pollinations fails or returns a tiny payload (< 5KB), fall back to
+    1. If visual_type == 'diagram', try Kroki (PlantUML).
+    2. If visual_type == 'photo', try Pollinations AI (FLUX).
+    3. If generation fails or returns a tiny payload (< 5KB), fall back to
        a locally-generated Pillow text card using the post hook.
 
     Always returns a valid data URI string. Never returns None.
 
     Args:
-        post_content: The full text of the LinkedIn post.
-        use_fallback: If True, skip Pollinations and go straight to Pillow fallback.
-        image_prompt: Optional dedicated prompt for the image generation model.
+        draft_data: Dict with visual_type, visual_payload, and post_content.
+        use_fallback: If True, skip generation and go straight to Pillow fallback.
 
     Returns:
         A base64-encoded data URI (data:image/...) string.
     """
+    visual_type = draft_data.get("visual_type")
+    payload = draft_data.get("visual_payload")
+    post_content = draft_data.get("post_content", "")
+
     if not use_fallback:
-        try:
-            logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
+        if visual_type == "diagram" and payload:
+            import zlib
+            import httpx
             
-            if image_prompt:
-                final_image_prompt = sanitize_image_prompt(image_prompt)
-            else:
-                # Build a concise image prompt from the post content
-                # Take the first 200 chars as a seed for the image concept
-                image_seed = post_content[:200].replace("\n", " ").strip()
-                final_image_prompt = sanitize_image_prompt(f"Abstract minimalist tech illustration: {image_seed}")
-
-            png_bytes = await generate_flux_image(final_image_prompt)
-
-            if png_bytes and len(png_bytes) >= MIN_IMAGE_SIZE_BYTES:
-                logger.info(f"[ROUTER] Pollinations succeeded. Image size: {len(png_bytes)} bytes")
-                b64_str = base64.b64encode(png_bytes).decode("utf-8")
-
-                # Detect MIME type from magic bytes
-                if png_bytes.startswith(b"\xff\xd8\xff"):
-                    mime_type = "image/jpeg"
+            try:
+                logger.info("[ROUTER] Attempting Kroki (PlantUML)...")
+                compressed = zlib.compress(payload.encode('utf-8'), 9)
+                encoded = base64.urlsafe_b64encode(compressed).decode('utf-8')
+                url = f"https://kroki.io/plantuml/png/{encoded}"
+                
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(url, timeout=15.0)
+                    resp.raise_for_status()
+                    png_bytes = resp.content
+                    
+                    if png_bytes and len(png_bytes) >= MIN_IMAGE_SIZE_BYTES:
+                        logger.info(f"[ROUTER] Kroki succeeded. Image size: {len(png_bytes)} bytes")
+                        b64_str = base64.b64encode(png_bytes).decode("utf-8")
+                        return f"data:image/png;base64,{b64_str}"
+                    else:
+                        size = len(png_bytes) if png_bytes else 0
+                        logger.warning(f"[ROUTER] Kroki returned insufficient data ({size} bytes). Falling back to Pillow.")
+            except Exception as e:
+                logger.warning(f"[ROUTER] Kroki failed: {e}. Falling back to Pillow text card.")
+        else:
+            try:
+                logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
+                
+                if payload:
+                    final_image_prompt = sanitize_image_prompt(payload)
                 else:
-                    mime_type = "image/png"
+                    # Build a concise image prompt from the post content
+                    image_seed = post_content[:200].replace("\n", " ").strip()
+                    final_image_prompt = sanitize_image_prompt(f"Abstract minimalist tech illustration: {image_seed}")
 
-                return f"data:{mime_type};base64,{b64_str}"
-            else:
-                size = len(png_bytes) if png_bytes else 0
-                logger.warning(f"[ROUTER] Pollinations returned insufficient data ({size} bytes < {MIN_IMAGE_SIZE_BYTES}). Falling back to Pillow.")
+                png_bytes = await generate_flux_image(final_image_prompt)
 
-        except Exception as e:
-            logger.warning(f"[ROUTER] Pollinations failed: {e}. Falling back to Pillow text card.")
+                if png_bytes and len(png_bytes) >= MIN_IMAGE_SIZE_BYTES:
+                    logger.info(f"[ROUTER] Pollinations succeeded. Image size: {len(png_bytes)} bytes")
+                    b64_str = base64.b64encode(png_bytes).decode("utf-8")
+
+                    # Detect MIME type from magic bytes
+                    if png_bytes.startswith(b"\xff\xd8\xff"):
+                        mime_type = "image/jpeg"
+                    else:
+                        mime_type = "image/png"
+
+                    return f"data:{mime_type};base64,{b64_str}"
+                else:
+                    size = len(png_bytes) if png_bytes else 0
+                    logger.warning(f"[ROUTER] Pollinations returned insufficient data ({size} bytes < {MIN_IMAGE_SIZE_BYTES}). Falling back to Pillow.")
+
+            except Exception as e:
+                logger.warning(f"[ROUTER] Pollinations failed: {e}. Falling back to Pillow text card.")
 
     # ── GUARANTEED FALLBACK: Pillow Text Card ──
     # This never fails — it uses only local Python libraries.

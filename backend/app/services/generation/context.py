@@ -63,7 +63,8 @@ class PipelineContext:
     refined_text: str = ""
     requires_image: bool = True
     mermaid_diagram: Optional[str] = None
-    image_prompt: Optional[str] = None
+    visual_type: Optional[str] = None
+    visual_payload: Optional[str] = None
     image_url: Optional[str] = None
 
     # Metadata & Tracking

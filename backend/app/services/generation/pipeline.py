@@ -84,25 +84,19 @@ End the post by asking a single, specific question inviting the audience to shar
 
 OUTPUT FORMAT:
 Respond with ONLY a JSON object (no markdown fences, no extra text):
-{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "image_prompt": "<physical, photorealistic scene describing the concept>"}
+{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "visual_type": "<'diagram' or 'photo'>", "visual_payload": "<PlantUML code or scene description>"}
 
-THIRD FIELD — image_prompt:
-You are also acting as a prompt engineer for a photorealistic diffusion model (FLUX).
-Produce a third field, "image_prompt", following these rules exactly:
+THIRD & FOURTH FIELDS — visual_type and visual_payload:
+You must determine the best visual to accompany your post. 
 
-RULE 1 — Concrete and photographable only. Describe ONE real, physical scene a camera could actually capture. Never describe the software concept directly.
-RULE 2 — Never use these words or close synonyms: database, API, cloud, server (as software), telemetry, ingestion, pipeline, endpoint, cache, latency, microservice, algorithm, code, software, query, schema, deployment, edge, node, cluster.
-RULE 3 — Translate the theme into a physical metaphor first:
-  - Databases/telemetry -> server racks, blinking status lights, glass cabinets
-  - Data streaming -> factory conveyor belts, water through pipes, light trails in a tunnel
-  - APIs/integration -> circuit boards, connector cables, sockets, bridges
-  - Speed/latency -> a stopwatch, motion blur, a sprinter at the blocks
-  - Security -> vaults, locks, keys, fingerprint scanners
-  - Scale -> aerial shots of city grids, warehouse rows, drone swarms
-  - Errors -> magnifying glass over a circuit board, one red light among green
-  - Fallback -> a minimalist desk, glowing laptop in a dark room, hands on mechanical keyboard
-RULE 4 — Append this exact modifier string to the end, verbatim: "highly detailed, 8k, photorealistic, cinematic lighting, shallow depth of field"
-RULE 5 — Keep the scene description under 40 words.
+If the post is about software architecture, backend systems, APIs, or data flow:
+- Set "visual_type" to "diagram".
+- Set "visual_payload" to clean, valid PlantUML syntax (e.g., @startuml ... @enduml).
+- Ensure the diagram explicitly maps the technologies mentioned in the post (e.g., FastAPI, PostgreSQL, Render).
+
+If the post is about physical hardware, nature, or real-world objects:
+- Set "visual_type" to "photo".
+- Set "visual_payload" to a concrete, physical scene description (max 40 words) ending with "highly detailed, 8k, photorealistic".
 """
 
 
@@ -310,7 +304,8 @@ class ContentGenerationPipeline:
         parsed = self._parse_llm_json(raw_response)
         generated_text = parsed.get("draft", "")
         self_check = parsed.get("self_check", "")
-        image_prompt = parsed.get("image_prompt", "")
+        visual_type = parsed.get("visual_type", "photo")
+        visual_payload = parsed.get("visual_payload", "")
 
         if self_check:
             logger.info(f"[SELF CHECK] {self_check}")
@@ -330,8 +325,9 @@ class ContentGenerationPipeline:
         context.requires_image = True
         llm_output_metadata = {"self_check": self_check}
 
-        # Store the extracted image prompt in context for the orchestrator
-        context.image_prompt = image_prompt
+        # Store the extracted visual properties in context for the orchestrator
+        context.visual_type = visual_type
+        context.visual_payload = visual_payload
 
         # 5. Format LinkedIn spacing
         self._log_stage("FORMAT", context.trace_id, "START")
@@ -426,7 +422,8 @@ class ContentGenerationPipeline:
             "prompt_length": len(user_prompt) + len(system_prompt),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "requires_image": context.requires_image,
-            "image_prompt": context.image_prompt,
+            "visual_type": context.visual_type,
+            "visual_payload": context.visual_payload,
             "image_url": context.image_url,
             "topic": context.topic,
             "metrics": metrics.to_dict(),
