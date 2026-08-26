@@ -84,7 +84,12 @@ End the post by asking a single, specific question inviting the audience to shar
 
 OUTPUT FORMAT:
 Respond with ONLY a JSON object (no markdown fences, no extra text):
-{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>"}
+{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "image_prompt": "<physical, photorealistic scene describing the concept>"}
+
+IMAGE PROMPT RULES:
+1. It must describe a CONCRETE, physical, photorealistic scene (e.g., a macro shot of a sleek circuit board, a clean minimalist desk with a glowing monitor, a server rack with cinematic lighting).
+2. It MUST NOT use abstract software words (no "database", "API", "cloud", "telemetry").
+3. Append high-caliber modifiers: highly detailed, 8k, photorealistic, cinematic lighting, depth of field.
 """
 
 
@@ -292,6 +297,7 @@ class ContentGenerationPipeline:
         parsed = self._parse_llm_json(raw_response)
         generated_text = parsed.get("draft", "")
         self_check = parsed.get("self_check", "")
+        image_prompt = parsed.get("image_prompt", "")
 
         if self_check:
             logger.info(f"[SELF CHECK] {self_check}")
@@ -311,8 +317,8 @@ class ContentGenerationPipeline:
         context.requires_image = True
         llm_output_metadata = {"self_check": self_check}
 
-        # Image prompt is not used — router handles image generation independently
-        context.image_prompt = None
+        # Store the extracted image prompt in context for the orchestrator
+        context.image_prompt = image_prompt
 
         # 5. Format LinkedIn spacing
         self._log_stage("FORMAT", context.trace_id, "START")

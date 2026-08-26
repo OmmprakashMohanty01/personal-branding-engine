@@ -53,7 +53,7 @@ async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContex
 
     # Use fallback (skip Pollinations, go straight to Pillow) if text gen already fell back
     use_fallback = bool(context.telemetry.fallback_provider_used)
-    image_data_uri = await generate_visuals(draft.content_text, use_fallback=use_fallback)
+    image_data_uri = await generate_visuals(draft.content_text, use_fallback=use_fallback, image_prompt=context.image_prompt)
 
     context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
 

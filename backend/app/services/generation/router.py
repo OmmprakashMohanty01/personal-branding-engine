@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 MIN_IMAGE_SIZE_BYTES = 5 * 1024  # 5KB minimum to reject error pages
 
 
-async def generate_visuals(post_content: str, use_fallback: bool = False) -> str | None:
+async def generate_visuals(post_content: str, use_fallback: bool = False, image_prompt: str | None = None) -> str | None:
     """Generate an image for the post.
 
     Strategy:
@@ -34,6 +34,7 @@ async def generate_visuals(post_content: str, use_fallback: bool = False) -> str
     Args:
         post_content: The full text of the LinkedIn post.
         use_fallback: If True, skip Pollinations and go straight to Pillow fallback.
+        image_prompt: Optional dedicated prompt for the image generation model.
 
     Returns:
         A base64-encoded data URI (data:image/...) string.
@@ -41,12 +42,16 @@ async def generate_visuals(post_content: str, use_fallback: bool = False) -> str
     if not use_fallback:
         try:
             logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
-            # Build a concise image prompt from the post content
-            # Take the first 200 chars as a seed for the image concept
-            image_seed = post_content[:200].replace("\n", " ").strip()
-            image_prompt = f"Abstract minimalist tech illustration: {image_seed}"
+            
+            if image_prompt:
+                final_image_prompt = image_prompt
+            else:
+                # Build a concise image prompt from the post content
+                # Take the first 200 chars as a seed for the image concept
+                image_seed = post_content[:200].replace("\n", " ").strip()
+                final_image_prompt = f"Abstract minimalist tech illustration: {image_seed}"
 
-            png_bytes = await generate_flux_image(image_prompt)
+            png_bytes = await generate_flux_image(final_image_prompt)
 
             if png_bytes and len(png_bytes) >= MIN_IMAGE_SIZE_BYTES:
                 logger.info(f"[ROUTER] Pollinations succeeded. Image size: {len(png_bytes)} bytes")
