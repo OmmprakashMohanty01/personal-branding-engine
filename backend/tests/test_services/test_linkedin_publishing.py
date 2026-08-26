@@ -199,8 +199,8 @@ async def test_orchestrator_publishing_requires_image_but_missing(db_session: As
 # ==========================================
 @pytest.mark.asyncio
 async def test_publishing_api_endpoints_connect(api_client: httpx.AsyncClient, db_session: AsyncSession):
-    # Test POST /publishing/linkedin/connect (Mocked exchange code callback)
-    resp_connect = await api_client.post("/api/v1/publishing/linkedin/connect?code=auth_code_123&redirect_uri=https://personal-branding-engine.vercel.app")
+    # Test POST /publishing/linkedin/connect (Mocked exchange code callback via sandbox code)
+    resp_connect = await api_client.post("/api/v1/publishing/linkedin/connect?code=sandbox_dev_token_123&redirect_uri=https://personal-branding-engine.vercel.app")
     assert resp_connect.status_code == 200
     data_conn = resp_connect.json()
     assert data_conn["status"] == "connected"
