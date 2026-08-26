@@ -86,10 +86,23 @@ OUTPUT FORMAT:
 Respond with ONLY a JSON object (no markdown fences, no extra text):
 {"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "image_prompt": "<physical, photorealistic scene describing the concept>"}
 
-IMAGE PROMPT RULES:
-1. It must describe a CONCRETE, physical, photorealistic scene (e.g., a macro shot of a sleek circuit board, a clean minimalist desk with a glowing monitor, a server rack with cinematic lighting).
-2. It MUST NOT use abstract software words (no "database", "API", "cloud", "telemetry").
-3. Append high-caliber modifiers: highly detailed, 8k, photorealistic, cinematic lighting, depth of field.
+THIRD FIELD — image_prompt:
+You are also acting as a prompt engineer for a photorealistic diffusion model (FLUX).
+Produce a third field, "image_prompt", following these rules exactly:
+
+RULE 1 — Concrete and photographable only. Describe ONE real, physical scene a camera could actually capture. Never describe the software concept directly.
+RULE 2 — Never use these words or close synonyms: database, API, cloud, server (as software), telemetry, ingestion, pipeline, endpoint, cache, latency, microservice, algorithm, code, software, query, schema, deployment, edge, node, cluster.
+RULE 3 — Translate the theme into a physical metaphor first:
+  - Databases/telemetry -> server racks, blinking status lights, glass cabinets
+  - Data streaming -> factory conveyor belts, water through pipes, light trails in a tunnel
+  - APIs/integration -> circuit boards, connector cables, sockets, bridges
+  - Speed/latency -> a stopwatch, motion blur, a sprinter at the blocks
+  - Security -> vaults, locks, keys, fingerprint scanners
+  - Scale -> aerial shots of city grids, warehouse rows, drone swarms
+  - Errors -> magnifying glass over a circuit board, one red light among green
+  - Fallback -> a minimalist desk, glowing laptop in a dark room, hands on mechanical keyboard
+RULE 4 — Append this exact modifier string to the end, verbatim: "highly detailed, 8k, photorealistic, cinematic lighting, shallow depth of field"
+RULE 5 — Keep the scene description under 40 words.
 """
 
 
