@@ -16,7 +16,6 @@ def override_settings(monkeypatch):
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
-@patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -24,19 +23,17 @@ async def test_automation_daily_success(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
-    mock_generate_flux,
     mock_litellm,
     override_settings
 ):
     """Test 1: Complete Scheduled Automation Flow (API -> DB -> Publish -> Success)"""
     mock_get_account.return_value = AsyncMock()
     mock_publish.return_value = "urn:li:share:987654321"
-    mock_generate_flux.return_value = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000  # Fake JPEG > 5KB
     
     # Mock LiteLLM to return structured JSON
     mock_response = AsyncMock()
     mock_response.choices = [AsyncMock()]
-    mock_response.choices[0].message.content = '{"draft": "This is a fully generated post ready for publishing. It has enough content to pass all the validation gates and length checks.", "self_check": "All good."}'
+    mock_response.choices[0].message.content = '{"paragraphs": ["This is a fully generated post ready for publishing.", "It has enough content to pass all the validation gates and length checks."], "self_check": "All good.", "quote_hook": "Automation success."}'
     mock_litellm.return_value = mock_response
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -81,7 +78,6 @@ async def test_automation_daily_success(
 
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
-@patch("app.services.generation.router.generate_flux_image", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
@@ -89,19 +85,21 @@ async def test_full_length_post_integrity(
     mock_check_idempotency,
     mock_get_account,
     mock_publish,
-    mock_generate_flux_image,
     mock_litellm,
     override_settings
 ):
     """Test 2: Ensure a 2800-character post is not truncated at any step."""
     long_post_text = "A" * 2800
     
-    mock_generate_flux_image.return_value = b'\xff\xd8\xff\xe0' + b'\x00' * 15_000  # Fake JPEG > 5KB
-    
     # Mock LiteLLM to return the 2800-char text as a JSON draft
     mock_response = AsyncMock()
     mock_response.choices = [AsyncMock()]
-    mock_response.choices[0].message.content = '{"draft": "' + long_post_text + '", "self_check": "OK"}'
+    import json
+    mock_response.choices[0].message.content = json.dumps({
+        "paragraphs": [long_post_text],
+        "self_check": "OK",
+        "quote_hook": "Long post hook"
+    })
     mock_litellm.return_value = mock_response
     mock_publish.return_value = "urn:li:share:longpost"
     

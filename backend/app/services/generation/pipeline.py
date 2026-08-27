@@ -40,6 +40,7 @@ from app.services.generation.formatters import LinkedInFormatter
 from app.services.generation.prompt_builder import PromptBuilder
 from app.services.generation.strategy_selector import StrategySelector
 from app.services.generation.validators import ValidatorRegistry
+from app.schemas.generation import LLMContentDraft
 
 logger = logging.getLogger("branding_engine.generation.pipeline")
 litellm.suppress_debug_info = True
@@ -68,10 +69,8 @@ UNIFIED_SYSTEM_PROMPT = """You are a Senior Software Engineer writing a LinkedIn
 VOICE & STRUCTURE:
 Write in a raw, authentic, build in public engineering voice. No polish. Real talk.
 Anchor every point on concrete technical details: actual code patterns, real metrics, specific debugging stories. Show the messy reality.
-FORMATTING: Write in short, punchy paragraphs (1 to 3 sentences max) to ensure the reader is properly hooked and does not skip the post. You MUST separate every paragraph with double newlines (`\n\n`). Do NOT output a single wall of text.
+FORMATTING: Write in short, punchy paragraphs (1 to 3 sentences max) to ensure the reader is properly hooked and does not skip the post.
 You must continue to completely avoid using hyphens or dashes (-) anywhere in the text to maintain a humanized tone.
-
-
 ABSOLUTE FORBIDDEN LAWS:
 You MUST NOT use hyphens or dashes anywhere in the text. Not even in compound words. Replace them with spaces or rephrase.
 You MUST NOT use bullet points, asterisks, numbered lists, or any list formatting.
@@ -85,26 +84,19 @@ End the post by asking a single, specific question inviting the audience to shar
 
 OUTPUT FORMAT:
 Respond with ONLY a JSON object (no markdown fences, no extra text):
-{"draft": "<the full LinkedIn post text>", "self_check": "<1 sentence note on any rule you almost broke>", "visual_type": "<'diagram', 'photo', or 'card'>", "visual_payload": "<PlantUML code, scene description, or quote hook>"}
+{"paragraphs": ["para 1", "para 2", "para 3"], "self_check": "<1 sentence note on any rule you almost broke>", "quote_hook": "<10-15 word punchy quote extracted from the draft>"}
 
-THIRD & FOURTH FIELDS — visual_type and visual_payload:
-Choose the best visual strategy:
+FIELDS — paragraphs and quote_hook:
+1. PARAGRAPHS:
+- Fill the `paragraphs` array with 3 to 4 items.
+- Each item must be a short, punchy paragraph (max 3 sentences).
+- Keep the writing style raw, authentic, and concrete.
+- Do NOT use hyphens or dashes (-) anywhere in the text.
 
-1. SOFTWARE ARCHITECTURE / SYSTEM DESIGN:
-- visual_type: "diagram"
-- visual_payload: Valid PlantUML code mapping the technologies discussed.
-
-2. PHYSICAL OBJECTS / HARDWARE (e.g., Wearables, Mainframes):
-- visual_type: "photo"
-- visual_payload: A concrete physical description ending with "highly detailed, 8k, photorealistic, cinematic lighting".
-- CRITICAL RULE FOR PHOTOS: NEVER use proprietary brand names, company names, or specific product models (e.g., Apple, IBM, M6, Nvidia) in the image prompt. AI diffusion models hallucinate brands into plastic garbage. 
-- Instead, describe the RAW MATERIALS and AESTHETICS. 
-  - BAD: "An Apple M6 silicon chip"
-  - GOOD: "A macro photograph of an iridescent silicon wafer with glowing microscopic circuitry, neon blue lighting, cleanroom environment"
-
-3. ABSTRACT TECH, STORIES, LOGGING, OPINIONS:
-- visual_type: "card"
-- visual_payload: Extract a punchy, thought-provoking quote (10-15 words) directly from your draft. No quotes marks.
+2. QUOTE HOOK:
+- Extract a punchy, thought-provoking quote (10-15 words) directly from your draft.
+- No quotes marks.
+- This will be used as a typographic image card to accompany the post.
 """
 
 
@@ -221,7 +213,7 @@ class ContentGenerationPipeline:
         # All providers exhausted
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
-    def _parse_llm_json(self, raw_response: str) -> dict:
+    def _parse_llm_json(self, raw_response: str) -> LLMContentDraft:
         """Parse the structured JSON from the LLM response, with repair."""
         # Strip markdown fences if present
         cleaned = raw_response.strip()
@@ -234,26 +226,26 @@ class ContentGenerationPipeline:
         cleaned = cleaned.strip()
 
         try:
-            parsed = json.loads(cleaned)
-            if "draft" in parsed:
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
+            return LLMContentDraft.model_validate_json(cleaned)
+        except Exception as e:
+            logger.warning(f"[JSON REPAIR] Validation failed: {e}. Attempting repair.")
+            
         # Attempt repair: find the first { and last }
         first_brace = cleaned.find("{")
         last_brace = cleaned.rfind("}")
         if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
             try:
-                parsed = json.loads(cleaned[first_brace:last_brace + 1])
-                if "draft" in parsed:
-                    return parsed
-            except json.JSONDecodeError:
+                return LLMContentDraft.model_validate_json(cleaned[first_brace:last_brace + 1])
+            except Exception:
                 pass
 
         # Last resort: treat the entire response as the draft
         logger.warning("[JSON REPAIR] Could not parse JSON. Using raw text as draft.")
-        return {"draft": cleaned, "self_check": "JSON parsing failed, used raw text."}
+        return LLMContentDraft(
+            paragraphs=[cleaned],
+            self_check="JSON parsing failed, used raw text.",
+            quote_hook="Engineering excellence requires simplicity."
+        )
 
     async def run(self, context: PipelineContext, commit_db: bool = True) -> ContentDraft:
         """Run all generation pipeline stages sequentially using the provided context.
@@ -310,10 +302,9 @@ class ContentGenerationPipeline:
 
         # Parse the structured JSON response
         parsed = self._parse_llm_json(raw_response)
-        generated_text = parsed.get("draft", "")
-        self_check = parsed.get("self_check", "")
-        visual_type = parsed.get("visual_type", "photo")
-        visual_payload = parsed.get("visual_payload", "")
+        generated_text = "\n\n".join(parsed.paragraphs)
+        self_check = parsed.self_check
+        quote_hook = parsed.quote_hook
 
         if self_check:
             logger.info(f"[SELF CHECK] {self_check}")
@@ -334,8 +325,7 @@ class ContentGenerationPipeline:
         llm_output_metadata = {"self_check": self_check}
 
         # Store the extracted visual properties in context for the orchestrator
-        context.visual_type = visual_type
-        context.visual_payload = visual_payload
+        context.quote_hook = quote_hook
 
         # 5. Format LinkedIn spacing
         self._log_stage("FORMAT", context.trace_id, "START")
@@ -430,8 +420,7 @@ class ContentGenerationPipeline:
             "prompt_length": len(user_prompt) + len(system_prompt),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "requires_image": context.requires_image,
-            "visual_type": context.visual_type,
-            "visual_payload": context.visual_payload,
+            "quote_hook": context.quote_hook,
             "image_url": context.image_url,
             "topic": context.topic,
             "metrics": metrics.to_dict(),

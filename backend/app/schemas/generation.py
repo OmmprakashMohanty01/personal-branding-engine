@@ -25,27 +25,15 @@ class VisualStrategyOutput(BaseModel):
     visual_metaphor: str = Field(..., description="A visual metaphor representing the concepts.")
     image_prompt: str = Field(..., description="The final cinematic image prompt for Pollinations AI.")
 
-class LLMGenerationOutput(BaseModel):
-    """Internal model for parsing the expanded JSON output from Stage 1 LLM.
-
-    Not exposed via API — fields are stored in llm_metadata.
-    """
-
-    content_text: str = Field(
-        ...,
-        description="The fully formatted post text",
+class LLMContentDraft(BaseModel):
+    paragraphs: List[str] = Field(
+        ..., 
+        description="The finished LinkedIn post text broken into an array of 3 to 4 short, punchy paragraphs."
     )
-    requires_image: bool = Field(
-        True,
-        description="Whether the post needs an accompanying image",
-    )
-    mermaid_diagram: Optional[str] = Field(
-        None,
-        description="Mermaid flowchart diagram code if visual diagram is needed",
-    )
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Nested metadata containing post_type, hook_style, audience, goal, etc.",
+    self_check: str = Field(...)
+    quote_hook: str = Field(
+        ..., 
+        description="A powerful 10-15 word quote extracted directly from the post to be used as a typographic image card."
     )
 
 

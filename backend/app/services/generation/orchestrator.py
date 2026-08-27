@@ -54,8 +54,7 @@ async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContex
     # Use fallback (skip Pollinations, go straight to Pillow) if text gen already fell back
     use_fallback = bool(context.telemetry.fallback_provider_used)
     draft_data = {
-        "visual_type": context.visual_type,
-        "visual_payload": context.visual_payload,
+        "quote_hook": context.quote_hook,
         "post_content": draft.content_text,
     }
     image_data_uri = await generate_visuals(draft_data, use_fallback=use_fallback)
