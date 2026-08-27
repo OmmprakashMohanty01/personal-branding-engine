@@ -28,19 +28,36 @@ def sanitize_image_prompt(direction: VisualDirection) -> str:
     
     return scene[:300]
 
-async def generate_visuals(direction: VisualDirection, draft_data: dict | str = None, use_fallback: bool = False) -> str | None:
+from typing import Any
+
+async def generate_visuals(direction: Any, draft_data: dict | str = None, use_fallback: bool = False) -> str | None:
     """Generate an image based on the VisualDirection from the VisualDirector.
 
     Always returns a valid data URI string. Never returns None.
 
     Args:
-        direction: The structured VisualDirection object.
+        direction: The structured VisualDirection object, or a raw topic string from the manual UI.
         draft_data: Ignored, kept for signature compatibility during transition.
         use_fallback: If True, skip generation and go straight to Pillow fallback.
 
     Returns:
         A base64-encoded data URI (data:image/...) string.
     """
+    # Handle manual UI generation where direction might just be a string topic
+    if isinstance(direction, str):
+        direction = VisualDirection(
+            visual_type="editorial_photo",
+            subject=direction,
+            scene=direction,
+            concept="Technology",
+            composition="Cinematic framing",
+            lighting="Studio lighting",
+            style="Premium editorial photography",
+            negative_prompt="text, typography, quotes, logos"
+        )
+    elif isinstance(direction, dict):
+        direction = VisualDirection(**direction)
+
     if not use_fallback:
         if direction.visual_type == "diagram":
             import zlib
