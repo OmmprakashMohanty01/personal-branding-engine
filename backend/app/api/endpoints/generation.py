@@ -52,11 +52,19 @@ async def get_live_news():
         ]
 
 async def generate_metaphorical_image_helper(topic: str, draft_text: str) -> str:
-    """Generate an image using the simplified Pollinations + Pillow router."""
+    """Generate an image using the structured Visual Director and router."""
     from app.services.generation.router import generate_visuals
+    from app.services.generation.visual_director import VisualDirector
 
-    logger.info(f"[IMAGE GEN] Requesting Visual Router for topic '{topic}'...")
-    image_url = await generate_visuals(draft_text)
+    logger.info(f"[IMAGE GEN] Requesting Visual Director for topic '{topic[:50]}...'")
+    
+    # 1. Run the raw string through the Visual Director first!
+    direction = await VisualDirector.generate_direction(topic, draft_text)
+    
+    logger.info(f"[IMAGE GEN] Structured direction received. Routing...")
+    
+    # 2. Pass the structured object to the visual generation logic
+    image_url = await generate_visuals(direction)
     
     if not image_url:
         raise HTTPException(
