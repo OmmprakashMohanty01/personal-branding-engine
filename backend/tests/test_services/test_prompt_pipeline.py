@@ -52,7 +52,7 @@ from app.services.generation.prompt_templates import (
     OUTPUT_SCHEMA_TEMPLATE,
     SELF_CHECK_TEMPLATE,
 )
-from app.schemas.generation import LLMGenerationOutput
+from app.schemas.generation import LLMContentDraft
 from app.services.generation.image_quality_gate import ImageQualityGate
 
 # Setup in-memory database for testing
@@ -258,31 +258,27 @@ class TestPromptBuilder:
 # ==========================================
 # 6. LLM GENERATION OUTPUT SCHEMA TESTS
 # ==========================================
-class TestLLMGenerationOutput:
+class TestLLMContentDraft:
 
     def test_minimal_valid_output(self):
-        output = LLMGenerationOutput(content_text="Hello world")
-        assert output.content_text == "Hello world"
-        assert output.requires_image is True
-        assert output.metadata == {}
-
-    def test_full_valid_output_with_metadata(self):
-        output = LLMGenerationOutput(
-            content_text="This is a technical post.",
-            requires_image=True,
-            mermaid_diagram="flowchart TD\\n A-->B",
-            metadata={
-                "post_type": "insight",
-                "hook_style": "technical observation",
-                "audience": "engineers",
-                "goal": "teach",
-            }
+        output = LLMContentDraft(
+            paragraphs=["Hello world"],
+            self_check="Checked.",
+            quote_hook="Hello"
         )
-        assert output.content_text == "This is a technical post."
-        assert output.requires_image is True
-        assert output.mermaid_diagram == "flowchart TD\\n A-->B"
-        assert output.metadata["post_type"] == "insight"
-        assert output.metadata["goal"] == "teach"
+        assert output.paragraphs == ["Hello world"]
+        assert output.self_check == "Checked."
+        assert output.quote_hook == "Hello"
+
+    def test_full_valid_output(self):
+        output = LLMContentDraft(
+            paragraphs=["This is a technical post.", "It is good."],
+            self_check="No hyphens used.",
+            quote_hook="This is a technical post."
+        )
+        assert output.paragraphs == ["This is a technical post.", "It is good."]
+        assert output.self_check == "No hyphens used."
+        assert output.quote_hook == "This is a technical post."
 
 
 # ==========================================
