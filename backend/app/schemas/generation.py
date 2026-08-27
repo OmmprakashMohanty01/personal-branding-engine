@@ -25,6 +25,17 @@ class VisualStrategyOutput(BaseModel):
     visual_metaphor: str = Field(..., description="A visual metaphor representing the concepts.")
     image_prompt: str = Field(..., description="The final cinematic image prompt for Pollinations AI.")
 
+class VisualDirection(BaseModel):
+    """Output schema for the Visual Director."""
+    visual_type: str = Field(..., description="Must be 'editorial_photo', 'diagram', or 'quote_card'")
+    subject: str = Field(...)
+    scene: str = Field(...)
+    concept: str = Field(...)
+    composition: str = Field(...)
+    lighting: str = Field(...)
+    style: str = Field(...)
+    negative_prompt: str = Field(...)
+
 class LLMContentDraft(BaseModel):
     paragraphs: List[str] = Field(
         ..., 

@@ -47,17 +47,30 @@ async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContex
     await _update_draft_status(db, draft, "MEDIA_UPLOADING")
 
     from app.services.generation.router import generate_visuals
+    from app.services.generation.visual_director import VisualDirector
 
     img_start = time.time()
+    
+    # 1. Generate Structured Visual Direction
+    logger.info("[ORCHESTRATOR] Generating visual direction via VisualDirector...")
+    direction = await VisualDirector.generate_direction(context.topic, draft.content_text)
+    
+    # Structured logging as requested
+    logger.info(
+        f"[VISUAL PROMPT]\n"
+        f"trace_id={context.trace_id}\n"
+        f"draft_id={draft.id}\n"
+        f"visual_type={direction.visual_type}\n"
+        f"subject={direction.subject}\n"
+        f"scene={direction.scene}\n"
+        f"style={direction.style}"
+    )
+
     logger.info("[ORCHESTRATOR] Generating visual via simplified router...")
 
     # Use fallback (skip Pollinations, go straight to Pillow) if text gen already fell back
     use_fallback = bool(context.telemetry.fallback_provider_used)
-    draft_data = {
-        "quote_hook": context.quote_hook,
-        "post_content": draft.content_text,
-    }
-    image_data_uri = await generate_visuals(draft_data, use_fallback=use_fallback)
+    image_data_uri = await generate_visuals(direction=direction, draft_data=None, use_fallback=use_fallback)
 
     context.telemetry.image_generation_latency_ms = round((time.time() - img_start) * 1000, 2)
 
