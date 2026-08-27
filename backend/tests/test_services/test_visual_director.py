@@ -9,10 +9,10 @@ async def test_visual_director_valid_output():
     content = "Platforms locking out privacy focused operating systems like GrapheneOS is bad."
     
     mock_direction = VisualDirection(
-        visual_type="editorial_photo",
-        subject="modern Android smartphone representing a privacy focused mobile operating system",
+        visual_type="EDITORIAL_PHOTOGRAPHY",
+        core_subject="modern Android smartphone representing a privacy focused mobile operating system",
+        visual_metaphor="tension between user privacy and platform controlled distribution",
         scene="smartphone isolated on a dark technical desk with subtle cybersecurity and privacy visual cues",
-        concept="tension between user privacy and platform controlled distribution",
         composition="single dominant smartphone, strong negative space, cinematic three quarter perspective",
         lighting="subtle blue ambient lighting",
         style="premium technology editorial photography",
@@ -28,8 +28,8 @@ async def test_visual_director_valid_output():
 
         direction = await VisualDirector.generate_direction(topic, content)
 
-        assert direction.visual_type == "editorial_photo"
-        assert direction.subject == "modern Android smartphone representing a privacy focused mobile operating system"
+        assert direction.visual_type == "EDITORIAL_PHOTOGRAPHY"
+        assert direction.core_subject == "modern Android smartphone representing a privacy focused mobile operating system"
         assert "text" in direction.negative_prompt
 
 @pytest.mark.asyncio
@@ -38,6 +38,6 @@ async def test_visual_director_fallback_on_failure():
         direction = await VisualDirector.generate_direction("topic", "content")
         
         # It should return the default direction
-        assert direction.visual_type == "editorial_photo"
-        assert "server room" in direction.subject
+        assert direction.visual_type == "EDITORIAL_PHOTOGRAPHY"
+        assert "server room" in direction.core_subject
         assert "text" in direction.negative_prompt

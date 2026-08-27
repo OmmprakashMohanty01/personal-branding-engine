@@ -20,13 +20,20 @@ logger = logging.getLogger(__name__)
 MIN_IMAGE_SIZE_BYTES = 5 * 1024  # 5KB minimum to reject error pages
 
 def sanitize_image_prompt(direction: VisualDirection) -> str:
-    """Build a detailed image prompt from the VisualDirection fields."""
-    scene = f"{direction.subject}. {direction.scene}. {direction.concept}. {direction.composition}. {direction.lighting}. Style: {direction.style}."
+    """Build a detailed image prompt from the VisualDirection fields using the required format."""
     
-    REQUIRED_MODIFIERS = "highly detailed, 8k, photorealistic, cinematic lighting"
-    scene = f"{scene}, {REQUIRED_MODIFIERS}"
+    prompt = (
+        f"Create a premium editorial technology photograph showing {direction.core_subject}. "
+        f"The visual should communicate {direction.visual_metaphor}. "
+        f"Composition: {direction.composition}. "
+        f"Environment: {direction.scene}. "
+        f"Lighting: {direction.lighting}. "
+        f"Style: {direction.style}. "
+        f"Do not include readable text, typography, UI screenshots, browser windows, social media interfaces, "
+        f"quote cards, generic office computers, generic laptops, generic monitors, hacker imagery, watermarks or logos."
+    )
     
-    return scene[:300]
+    return prompt[:1000]
 
 from typing import Any
 
@@ -46,10 +53,10 @@ async def generate_visuals(direction: Any, draft_data: dict | str = None, use_fa
     # Handle manual UI generation where direction might just be a string topic
     if isinstance(direction, str):
         direction = VisualDirection(
-            visual_type="editorial_photo",
-            subject=direction,
-            scene=direction,
-            concept="Technology",
+            visual_type="EDITORIAL_PHOTOGRAPHY",
+            core_subject=direction,
+            visual_metaphor="Technology and engineering",
+            scene="Studio or appropriate environment",
             composition="Cinematic framing",
             lighting="Studio lighting",
             style="Premium editorial photography",
@@ -59,14 +66,14 @@ async def generate_visuals(direction: Any, draft_data: dict | str = None, use_fa
         direction = VisualDirection(**direction)
 
     if not use_fallback:
-        if direction.visual_type == "diagram":
+        if direction.visual_type == "PROCESS_DIAGRAM" or direction.visual_type == "diagram":
             import zlib
             import httpx
             
             try:
                 logger.info("[ROUTER] Attempting Kroki (PlantUML)...")
                 # Create a simple PlantUML flowchart from the subject/concept
-                plantuml_code = f"@startuml\nskinparam backgroundColor transparent\nrectangle \"{direction.subject}\" as node1\nrectangle \"{direction.concept}\" as node2\nnode1 --> node2\n@enduml"
+                plantuml_code = f"@startuml\nskinparam backgroundColor transparent\nrectangle \"{direction.core_subject}\" as node1\nrectangle \"{direction.visual_metaphor}\" as node2\nnode1 --> node2\n@enduml"
                 
                 compressed = zlib.compress(plantuml_code.encode('utf-8'), 9)
                 encoded = base64.urlsafe_b64encode(compressed).decode('utf-8')
@@ -87,11 +94,15 @@ async def generate_visuals(direction: Any, draft_data: dict | str = None, use_fa
             except Exception as e:
                 logger.warning(f"[ROUTER] Kroki failed: {e}. Falling back to Pillow text card.")
         
-        elif direction.visual_type == "editorial_photo":
+        elif direction.visual_type != "quote_card": # Route any semantic category to Pollinations
             try:
                 logger.info("[ROUTER] Attempting Pollinations AI (FLUX)...")
                 
                 final_image_prompt = sanitize_image_prompt(direction)
+
+                # SEMANTIC DEBUGGING LOG
+                logger.info(f"VISUAL_CONCEPT: {direction.visual_metaphor}")
+                logger.info(f"FINAL_IMAGE_PROMPT: {final_image_prompt}")
 
                 png_bytes = await generate_flux_image(final_image_prompt)
 
@@ -118,7 +129,7 @@ async def generate_visuals(direction: Any, draft_data: dict | str = None, use_fa
     logger.info("[ROUTER] Generating native typography quote card...")
     try:
         # Pass the subject or concept to quote card to render *something*
-        payload = direction.subject if direction.subject else "Engineering excellence requires simplicity."
+        payload = direction.core_subject if direction.core_subject else "Engineering excellence requires simplicity."
         data_uri = generate_quote_card(payload)
         logger.info("[ROUTER] Typography card generated successfully.")
         return data_uri

@@ -57,13 +57,14 @@ async def process_visuals_for_draft(draft: ContentDraft, context: PipelineContex
     
     # Structured logging as requested
     logger.info(
-        f"[VISUAL PROMPT]\n"
+        f"\n[VISUAL PROMPT]\n"
         f"trace_id={context.trace_id}\n"
         f"draft_id={draft.id}\n"
         f"visual_type={direction.visual_type}\n"
-        f"subject={direction.subject}\n"
+        f"core_subject={direction.core_subject}\n"
+        f"visual_metaphor={direction.visual_metaphor}\n"
         f"scene={direction.scene}\n"
-        f"style={direction.style}"
+        f"style={direction.style}\n"
     )
 
     logger.info("[ORCHESTRATOR] Generating visual via simplified router...")

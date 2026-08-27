@@ -27,10 +27,10 @@ class VisualStrategyOutput(BaseModel):
 
 class VisualDirection(BaseModel):
     """Output schema for the Visual Director."""
-    visual_type: str = Field(..., description="Must be 'editorial_photo', 'diagram', or 'quote_card'")
-    subject: str = Field(...)
+    visual_type: str = Field(..., description="Must be a valid visual category (e.g. EDITORIAL_PHOTOGRAPHY, CONCEPTUAL_SCENE)")
+    core_subject: str = Field(...)
+    visual_metaphor: str = Field(...)
     scene: str = Field(...)
-    concept: str = Field(...)
     composition: str = Field(...)
     lighting: str = Field(...)
     style: str = Field(...)
