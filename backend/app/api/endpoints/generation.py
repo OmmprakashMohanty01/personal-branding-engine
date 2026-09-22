@@ -7,11 +7,11 @@ import json
 import time
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.content import ContentDraft
 from app.schemas.generation import GenerateRequest, DraftUpdatePayload, DraftResponse, ImageGenerateRequest
 from app.services.generation.context import PipelineContext
@@ -98,21 +98,40 @@ async def generate_image_endpoint(
             content={"status": "error", "image_url": None, "message": "Image generation currently unavailable."}
         )
 
-@router.post("", status_code=status.HTTP_200_OK)
+async def background_generation_task(draft_id: str, topic: str, persona_id: Optional[str], trace_id: str):
+    """Background task to run the generation pipeline using an isolated DB session."""
+    async with AsyncSessionLocal() as bg_db:
+        stmt = select(ContentDraft).where(ContentDraft.id == draft_id)
+        res = await bg_db.execute(stmt)
+        draft = res.scalars().first()
+        if not draft:
+            logger.error(f"Background task aborted: Draft {draft_id} not found.")
+            return
+
+        try:
+            await run_pipeline_sync(
+                db=bg_db,
+                draft=draft,
+                topic=topic,
+                persona_id=persona_id,
+                trace_id=trace_id,
+            )
+        except Exception as e:
+            logger.error(f"Background generation failed for draft {draft_id}: {e}")
+
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def generate_content(
     payload: GenerateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     x_run_id: Optional[str] = Header(None, alias="X-Run-ID")
 ):
-    """Generate a LinkedIn post draft synchronously.
+    """Start asynchronous generation of a LinkedIn post draft.
     
-    Runs the full generation pipeline inline (no background tasks).
-    Returns 200 OK with the completed draft, or 500 with the failure stage.
-    
-    State machine: PENDING → GENERATING → DRAFT_READY → MEDIA_UPLOADING → MEDIA_VALIDATED
+    Returns 202 Accepted. The frontend should poll the draft status.
     """
     run_id = x_run_id or f"manual_gen_{int(time.time())}"
-    logger.info(f"Synchronous generation started for topic: {payload.topic} [RunID: {run_id}]")
+    logger.info(f"Asynchronous generation started for topic: {payload.topic} [RunID: {run_id}]")
 
     # Create PENDING draft
     draft = ContentDraft(
@@ -127,35 +146,19 @@ async def generate_content(
     await db.commit()
     await db.refresh(draft)
 
-    try:
-        # Run the full pipeline synchronously
-        draft = await run_pipeline_sync(
-            db=db,
-            draft=draft,
-            topic=payload.topic,
-            persona_id=payload.persona_id,
-            trace_id=run_id,
-        )
+    background_tasks.add_task(
+        background_generation_task,
+        draft_id=str(draft.id),
+        topic=payload.topic,
+        persona_id=payload.persona_id,
+        trace_id=run_id
+    )
 
-        logger.info(f"Synchronous generation completed. Draft {draft.id} status: {draft.status}")
-        return {
-            "message": "Draft generation completed",
-            "draft_id": str(draft.id),
-            "status": draft.status,
-            "content_text": draft.content_text,
-            "image_url": (draft.llm_metadata or {}).get("image_url"),
-        }
-
-    except Exception as e:
-        logger.error(f"Synchronous generation failed at stage '{draft.status}': {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "stage": draft.status,
-                "error": str(e),
-                "draft_id": str(draft.id),
-            }
-        )
+    return {
+        "message": "Draft generation started",
+        "draft_id": str(draft.id),
+        "status": draft.status,
+    }
 
 @router.get("/drafts", response_model=List[DraftResponse])
 async def list_drafts(

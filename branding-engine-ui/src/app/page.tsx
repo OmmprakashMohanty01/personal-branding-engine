@@ -252,7 +252,7 @@ export default function DashboardPage() {
 
     try {
       setIsGenerating(true);
-      showToast("Generating LinkedIn post draft via Groq...", "info");
+      showToast("Generating LinkedIn post draft...", "info");
       
       const res = await fetch(`${API_BASE}/generation`, {
         method: "POST",
@@ -261,20 +261,38 @@ export default function DashboardPage() {
       });
 
       if (res.ok) {
-        const newDraft: Draft = await res.json();
-        showToast("Draft generated and saved to database!", "success");
-        setTopic("");
-        // Reload history and select the newly generated draft
-        await loadDrafts();
-        handleSelectDraft(newDraft);
+        const result = await res.json();
+        const draftId = result.draft_id;
+        showToast("Draft generation started in background...", "info");
+        
+        // Poll for draft completion
+        const pollInterval = setInterval(async () => {
+           const pollRes = await fetch(`${API_BASE}/generation/drafts/${draftId}`);
+           if (pollRes.ok) {
+              const checkDraft: Draft = await pollRes.json();
+              if (checkDraft.status === 'MEDIA_VALIDATED' || checkDraft.status === 'DRAFT_READY') {
+                 clearInterval(pollInterval);
+                 setIsGenerating(false);
+                 showToast("Draft generated and saved to database!", "success");
+                 setTopic("");
+                 // Reload history and select the newly generated draft
+                 await loadDrafts();
+                 handleSelectDraft(checkDraft);
+              } else if (checkDraft.status === 'FAILED') {
+                 clearInterval(pollInterval);
+                 setIsGenerating(false);
+                 showToast("Failed to generate draft. Please check server logs.", "error");
+              }
+           }
+        }, 3000);
       } else {
         const errorData = await res.json().catch(() => ({}));
-        showToast(errorData.detail || "Failed to generate draft.", "error");
+        showToast(errorData.detail || "Failed to start generation.", "error");
+        setIsGenerating(false);
       }
     } catch (err) {
       console.error("Generation error:", err);
       showToast("Network error: Failed to generate draft.", "error");
-    } finally {
       setIsGenerating(false);
     }
   };

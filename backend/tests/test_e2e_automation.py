@@ -408,22 +408,13 @@ async def test_failure_recovery_gemini_timeout():
 
 
 @pytest.mark.asyncio
-@patch("app.api.endpoints.generation.run_pipeline_sync", new_callable=AsyncMock)
-async def test_manual_generation_sync(mock_run_pipeline):
-    """Test that the manual generation endpoint returns 200 OK synchronously."""
+@patch("app.api.endpoints.generation.background_generation_task", new_callable=AsyncMock)
+async def test_manual_generation_async(mock_bg_task):
+    """Test that the manual generation endpoint returns 202 ACCEPTED asynchronously."""
     from app.database import get_db
     from sqlalchemy.ext.asyncio import AsyncSession
     from unittest.mock import AsyncMock
     from app.models.content import ContentDraft
-
-    # Mock the synchronous pipeline to return a completed draft
-    mock_draft = ContentDraft(
-        id="test-sync-draft",
-        content_text="This is a synchronously generated post with enough length to pass checks.",
-        status="MEDIA_VALIDATED",
-        llm_metadata={"image_url": "data:image/png;base64,abc"}
-    )
-    mock_run_pipeline.return_value = mock_draft
 
     mock_db = AsyncMock(spec=AsyncSession)
     
@@ -439,9 +430,11 @@ async def test_manual_generation_sync(mock_run_pipeline):
                 json={"topic": "Test topic", "persona_id": "test-persona"}
             )
             
-            assert response.status_code == 200
+            assert response.status_code == 202
             data = response.json()
-            assert data["status"] == "MEDIA_VALIDATED"
+            assert data["status"] == "PENDING"
             assert "draft_id" in data
+            
+            mock_bg_task.assert_called_once()
     finally:
         app.dependency_overrides.pop(get_db, None)
