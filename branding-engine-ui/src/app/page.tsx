@@ -493,6 +493,7 @@ export default function DashboardPage() {
                 </div>
                 <a
                   href={`${API_BASE}/publishing/linkedin/login${redirectParam}`}
+                  onClick={connectLinkedIn}
                   className="ml-2 inline-flex items-center justify-center px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-semibold tracking-wide shadow-md active:scale-95 transition-all duration-200"
                 >
                   Reconnect
