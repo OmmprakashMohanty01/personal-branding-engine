@@ -470,8 +470,8 @@ export default function DashboardPage() {
         {/* LinkedIn Connection Widget */}
         <div className="flex items-center gap-4">
           {(() => {
+            const redirectParam = typeof window !== "undefined" ? `?redirect_uri=${encodeURIComponent(window.location.origin)}` : "";
             if (linkedinConnected === false) {
-              const redirectParam = typeof window !== "undefined" ? `?redirect_uri=${encodeURIComponent(window.location.origin)}` : "";
               return (
                 <a
                   id="linkedin-connect-button"
@@ -491,6 +491,12 @@ export default function DashboardPage() {
                     {linkedinUrn.replace("urn:li:person:", "")}
                   </span>
                 </div>
+                <a
+                  href={`${API_BASE}/publishing/linkedin/login${redirectParam}`}
+                  className="ml-2 inline-flex items-center justify-center px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-semibold tracking-wide shadow-md active:scale-95 transition-all duration-200"
+                >
+                  Reconnect
+                </a>
               </div>
             );
           })()}
