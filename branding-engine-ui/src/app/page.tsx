@@ -86,52 +86,6 @@ export default function DashboardPage() {
     }
   };
 
-  // 2. LinkedIn connection (Supports sandbox simulation or real redirect)
-  const connectLinkedIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    const client_id = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID;
-    
-    // Sandbox bypass if client ID is mock/empty or if Shift key is held during click
-    if (!client_id || client_id === "mock_client_id" || e.shiftKey) {
-      try {
-        setIsConnecting(true);
-        const redirectUri = window.location.origin;
-        const res = await fetch(
-          `${API_BASE}/publishing/linkedin/connect?code=sandbox_dev_token_123&redirect_uri=${encodeURIComponent(redirectUri)}`,
-          { method: "POST" }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setLinkedinConnected(true);
-          setLinkedinUrn(data.linkedin_person_urn);
-          showToast("LinkedIn account connected successfully (Simulated)!", "success");
-        } else {
-          const errorData = await res.json().catch(() => ({}));
-          showToast(errorData.detail || "Failed to link LinkedIn account.", "error");
-        }
-      } catch (err) {
-        console.error("LinkedIn link error:", err);
-        showToast("Network error: Failed to connect LinkedIn.", "error");
-      } finally {
-        setIsConnecting(false);
-      }
-      return;
-    }
-
-    // Real OAuth flow redirect to LinkedIn consent screen
-    const redirect_uri = window.location.origin;
-    const scope = "openid profile email w_member_social offline_access";
-    const state = Math.random().toString(36).substring(2, 15);
-    localStorage.setItem("linkedin_oauth_state", state);
-
-    const authUrl = `https://www.linkedin.com/oauth/v2/authorization` +
-      `?response_type=code` +
-      `&client_id=${client_id}` +
-      `&redirect_uri=${encodeURIComponent(redirect_uri)}` +
-      `&scope=${encodeURIComponent(scope)}` +
-      `&state=${state}`;
-
-    window.location.href = authUrl;
-  };
 
   // 3. Load Drafts from history
   const loadDrafts = async (selectFirst = false) => {
@@ -493,7 +447,6 @@ export default function DashboardPage() {
                 </div>
                 <a
                   href={`${API_BASE}/publishing/linkedin/login${redirectParam}`}
-                  onClick={connectLinkedIn}
                   className="ml-2 inline-flex items-center justify-center px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-semibold tracking-wide shadow-md active:scale-95 transition-all duration-200"
                 >
                   Reconnect
