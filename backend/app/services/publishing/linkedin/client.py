@@ -52,9 +52,16 @@ class LinkedInClient:
                 logger.info(f"LinkedIn access token for account {account.id} is near expiration (within 48 hours). Refreshing...")
                 
                 # Retrieve encrypted refresh token
-                decrypted_refresh = decrypt_token(account.refresh_token)
+                decrypted_refresh = None
+                if account.refresh_token:
+                    decrypted_refresh = decrypt_token(account.refresh_token)
+
                 if not decrypted_refresh:
-                    raise ValueError("Cannot refresh access token: Refresh token is missing or empty.")
+                    if expires_at > now:
+                        logger.warning("Refresh token missing/empty, but access token is not yet expired. Using current token.")
+                        return decrypt_token(account.access_token)
+                    else:
+                        raise ValueError("Cannot refresh access token: Refresh token is missing or empty, and access token is expired.")
                     
                 refresh_data = {
                     "grant_type": "refresh_token",

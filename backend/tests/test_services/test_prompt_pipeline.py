@@ -144,7 +144,7 @@ class TestAuthorKnowledgeService:
 
         assert isinstance(context, AuthorContext)
         project_names = [p.name for p in context.projects]
-        assert "Personal Branding Engine" in project_names
+        assert "personal-branding-engine" in project_names
         assert context.links["GitHub"] == GITHUB_URL
 
     def test_default_fallback_for_generic_topic(self):

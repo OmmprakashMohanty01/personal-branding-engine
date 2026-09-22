@@ -18,8 +18,10 @@ logger = logging.getLogger("branding_engine.generation.image_quality_gate")
 class ImageQualityGate:
     """Validates image data URIs before persistence."""
 
-    MIN_IMAGE_SIZE_BYTES = 5120         # 5KB — reject broken/placeholder images
-    MAX_IMAGE_SIZE_BYTES = 10_000_000   # 10MB — reject suspiciously large images
+    # 5KB — reject broken/placeholder images
+    MIN_IMAGE_SIZE_BYTES = 5120
+    # 10MB — reject suspiciously large images
+    MAX_IMAGE_SIZE_BYTES = 10_000_000
 
     # JPEG magic bytes: FF D8 FF
     JPEG_MAGIC = b'\xff\xd8\xff'
@@ -37,7 +39,8 @@ class ImageQualityGate:
         4. Image has valid JPEG or PNG magic bytes
 
         Args:
-            image_data_uri: A base64 data URI string (e.g., "data:image/jpeg;base64,...")
+            image_data_uri: A base64 data URI string
+                            (e.g., "data:image/jpeg;base64,...")
 
         Returns:
             Tuple of (is_valid, reason). reason is empty string if valid.
@@ -47,10 +50,9 @@ class ImageQualityGate:
 
         # Extract base64 payload
         if "," in image_data_uri:
-            header, b64_data = image_data_uri.split(",", 1)
+            _, b64_data = image_data_uri.split(",", 1)
         else:
             b64_data = image_data_uri
-            header = ""
 
         # Validate base64 decoding
         try:
@@ -63,13 +65,15 @@ class ImageQualityGate:
         # Size gate
         if byte_count < cls.MIN_IMAGE_SIZE_BYTES:
             return False, (
-                f"Image too small ({byte_count} bytes < {cls.MIN_IMAGE_SIZE_BYTES} bytes). "
+                f"Image too small ({byte_count} bytes < "
+                f"{cls.MIN_IMAGE_SIZE_BYTES} bytes). "
                 f"Likely a broken or placeholder image."
             )
 
         if byte_count > cls.MAX_IMAGE_SIZE_BYTES:
             return False, (
-                f"Image too large ({byte_count} bytes > {cls.MAX_IMAGE_SIZE_BYTES} bytes)."
+                f"Image too large ({byte_count} bytes > "
+                f"{cls.MAX_IMAGE_SIZE_BYTES} bytes)."
             )
 
         # Magic byte validation

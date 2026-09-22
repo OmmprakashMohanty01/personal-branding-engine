@@ -58,24 +58,49 @@ class DynamicContext:
 # ---------------------------------------------------------------------------
 PROJECT_REGISTRY: List[Project] = [
     Project(
-        name="Personal Branding Engine",
-        description="Autonomous AI pipeline that generates and publishes daily LinkedIn posts using Gemini, Cohere, and Pollinations AI. Deployed on Render with PostgreSQL and GitHub Actions cron automation.",
-        tags=["fastapi", "ai", "llm", "automation", "linkedin", "render", "postgresql", "gemini", "cohere", "pollinations", "github-actions", "python"],
+        name="ai-customer-ops-hub",
+        description="AI-powered customer support automation: LLM agents + event-driven HITL workflows + Lemma SDK",
+        tags=["agents", "ai", "automation", "customer-support", "workflow"],
     ),
     Project(
-        name="AI Job Hunter",
-        description="Automated job application system using AI agents for resume tailoring, cover letter generation, and application tracking.",
-        tags=["ai", "automation", "agents", "python", "job-search", "llm"],
-    ),
-    Project(
-        name="YOLOv8 Player ReID",
-        description="Computer vision system for real-time player re-identification in sports footage using YOLOv8 object detection and re-identification techniques.",
-        tags=["computer-vision", "yolo", "deep-learning", "python", "pytorch", "sports", "ml"],
-    ),
-    Project(
-        name="Business RAG",
+        name="Business-RAG-Q-A-Bot",
         description="Retrieval-Augmented Generation system for business document Q&A using vector databases and LLM inference.",
-        tags=["rag", "llm", "vector-database", "ai", "python", "langchain"],
+        tags=["python", "rag", "llm", "langchain"],
+    ),
+    Project(
+        name="cinematic-prompt-engine",
+        description="Prompt engineering engine for generative AI models and LLMs.",
+        tags=["ai", "generative-ai", "llm", "prompt-engineering", "python"],
+    ),
+    Project(
+        name="f1-telemetry-dashboard",
+        description="Telemetry dashboard for Formula 1 data using FastF1.",
+        tags=["dashboard", "fastf1", "formula1", "python", "telemetry"],
+    ),
+    Project(
+        name="gun101-gkp",
+        description="A passwordless, asymmetric file encryption library. Recipients share a public Identity Token; only their RSA-4096 private key can decrypt files sent to them. No shared secrets required.",
+        tags=["encryption", "security", "cryptography"],
+    ),
+    Project(
+        name="JudgeGauge",
+        description="Fail-closed calibration gates for LLM-as-judge pipelines",
+        tags=["ai", "llm", "evaluation"],
+    ),
+    Project(
+        name="mcp-context-forge",
+        description="An AI Gateway, registry, and proxy that sits in front of any MCP, A2A, or REST/gRPC APIs, exposing a unified endpoint with centralized discovery, guardrails and management.",
+        tags=["ai", "gateway", "mcp", "agents"],
+    ),
+    Project(
+        name="Olist-Ecommerce-Sales-Analysis",
+        description="End-to-end data engineering pipeline: PostgreSQL + SQL analytics + Tableau dashboard on the Olist Brazilian E-Commerce dataset",
+        tags=["analytics", "data-engineering", "ecommerce", "postgresql", "sql", "tableau"],
+    ),
+    Project(
+        name="personal-branding-engine",
+        description="Autonomous LinkedIn content engine: FastAPI + Gemini AI + React dashboard + GitHub Actions scheduling",
+        tags=["ai", "automation", "fastapi", "gemini", "linkedin", "python"],
     ),
 ]
 
@@ -85,8 +110,8 @@ PROJECT_REGISTRY: List[Project] = [
 ALL_TECHNOLOGIES: List[str] = [
     "Python", "FastAPI", "PostgreSQL", "Docker", "Render",
     "Gemini", "Cohere", "Pollinations AI", "GitHub Actions",
-    "SQLAlchemy", "Alembic", "Pydantic", "YOLOv8", "PyTorch",
-    "LangChain", "RAG", "Linux", "Git", "Vercel",
+    "SQLAlchemy", "Alembic", "Pydantic", "Tableau", "SQL",
+    "LangChain", "RAG", "Linux", "Git", "Vercel", "MCP",
 ]
 
 
