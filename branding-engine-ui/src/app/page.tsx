@@ -119,7 +119,7 @@ export default function DashboardPage() {
 
     // Real OAuth flow redirect to LinkedIn consent screen
     const redirect_uri = window.location.origin;
-    const scope = "openid profile email w_member_social";
+    const scope = "openid profile email w_member_social offline_access";
     const state = Math.random().toString(36).substring(2, 15);
     localStorage.setItem("linkedin_oauth_state", state);
 
