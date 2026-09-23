@@ -17,6 +17,7 @@ from app.schemas.generation import GenerateRequest, DraftUpdatePayload, DraftRes
 from app.services.generation.context import PipelineContext
 from app.services.generation.orchestrator import run_pipeline_sync
 from app.services.publishing.orchestrator import PublishingOrchestrator
+from app.services.publishing.linkedin.client import AuthenticationError
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/generation", tags=["Generation"])
@@ -255,6 +256,9 @@ async def publish_draft_endpoint(
     except ValueError as e:
         traceback.print_exc()
         raise HTTPException(status_code=422, detail=str(e))
+    except AuthenticationError as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Publishing failed: {str(e)}")
