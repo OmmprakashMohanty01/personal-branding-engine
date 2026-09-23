@@ -126,13 +126,22 @@ class VisualDirector:
         for i, model in enumerate(PROVIDER_CHAIN):
             try:
                 logger.info(f"[VISUAL_DIRECTOR] Attempting model {model} ({i+1}/{len(PROVIDER_CHAIN)})...")
-                response = await litellm.acompletion(
-                    model=model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=800,
-                    response_format={"type": "json_object"},
-                )
+                
+                current_messages = [dict(m) for m in messages]
+                kwargs = {
+                    "model": model,
+                    "max_tokens": 800,
+                    "response_format": {"type": "json_object"},
+                }
+                
+                if "gemini" in model.lower():
+                    current_messages[0]["content"] += "\nMaintain a highly deterministic, zero-creativity tone."
+                else:
+                    kwargs["temperature"] = 0.7
+                    
+                kwargs["messages"] = current_messages
+                
+                response = await litellm.acompletion(**kwargs)
                 
                 raw_response = response.choices[0].message.content
                 

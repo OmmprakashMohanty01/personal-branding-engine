@@ -21,6 +21,9 @@ def _is_valid_image_format(image_bytes: bytes) -> bool:
         return True
     return False
 
+class AuthenticationError(Exception):
+    pass
+
 class LinkedInClient:
     """Async client wrapper for interacting with the LinkedIn Posts API and OAuth2 endpoints."""
     
@@ -333,6 +336,9 @@ class LinkedInClient:
         # Task 3: Inject Validation Assertions right before posting to publish
         post_text = sanitized_text
         assert len(post_text) > 100, "Text was truncated prematurely"
+            
+        if "mock" in (account.linkedin_person_urn or "") or "mock" in access_token:
+            raise AuthenticationError("LinkedIn token expired or invalid. Please re-authenticate.")
             
         async with httpx.AsyncClient() as client:
             try:

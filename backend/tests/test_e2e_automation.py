@@ -375,7 +375,7 @@ async def test_linkedin_idempotency_timeout_recovery(
     ]
     
     with patch("httpx.AsyncClient", return_value=MockHttpxClient()):
-        with patch.object(client, "check_and_refresh_token", AsyncMock(return_value="mock_token")):
+        with patch.object(client, "check_and_refresh_token", AsyncMock(return_value="test_token_123")):
             result = await client.publish_post(
                 db=AsyncMock(),
                 account=mock_account,

@@ -127,7 +127,11 @@ class PublishingOrchestrator:
             logger.info(f"Successfully published draft {draft_id} to LinkedIn. URN: {post_urn} trace_id={trace_id}")
         except Exception as e:
             logger.error(f"Failed to publish draft {draft_id} to LinkedIn: {e} trace_id={trace_id}")
-            draft.status = "FAILED"
+            from app.services.publishing.linkedin.client import AuthenticationError
+            if isinstance(e, AuthenticationError):
+                draft.status = "AUTH_EXPIRED"
+            else:
+                draft.status = "FAILED"
             raise e
         finally:
             await db.commit()

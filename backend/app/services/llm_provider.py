@@ -50,6 +50,11 @@ class GroqProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 1000
     ) -> str:
+        if system_instruction and "json" not in system_instruction.lower():
+            system_instruction += "\nOutput JSON."
+        elif not system_instruction:
+            system_instruction = "Output JSON."
+            
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
@@ -60,7 +65,8 @@ class GroqProvider(BaseLLMProvider):
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
 
@@ -118,6 +124,11 @@ class OpenAIProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 1000
     ) -> str:
+        if system_instruction and "json" not in system_instruction.lower():
+            system_instruction += "\nOutput JSON."
+        elif not system_instruction:
+            system_instruction = "Output JSON."
+            
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
@@ -128,7 +139,8 @@ class OpenAIProvider(BaseLLMProvider):
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
 
