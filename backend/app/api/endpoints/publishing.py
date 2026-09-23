@@ -158,7 +158,7 @@ async def linkedin_login(redirect_uri: str | None = Query(None)):
     env_redirect = os.getenv("REDIRECT_URI")
     final_redirect = env_redirect or redirect_uri or "http://localhost:3000"
     
-    scope = "openid profile email w_member_social offline_access"
+    scope = "openid profile email w_member_social"
     state = "linkedin_login_state_123"
     
     auth_url = (

@@ -240,9 +240,13 @@ class ContentGenerationPipeline:
                 pass
 
         # Last resort: treat the entire response as the draft
-        logger.warning("[JSON REPAIR] Could not parse JSON. Using raw text as draft.")
+        logger.warning("[JSON REPAIR] Could not parse JSON. Using regex fallback.")
+        matches = re.findall(r'"([^"]*)"', raw_response)
+        cleaned_text = [m for m in matches if m not in ["paragraphs", "self_check", "quote_hook"]]
+        fallback_text = "\n\n".join(cleaned_text).replace("\\n", "\n")
+        
         return LLMContentDraft(
-            paragraphs=[cleaned],
+            paragraphs=[fallback_text] if fallback_text.strip() else [cleaned],
             self_check="JSON parsing failed, used raw text.",
             quote_hook="Engineering excellence requires simplicity."
         )
