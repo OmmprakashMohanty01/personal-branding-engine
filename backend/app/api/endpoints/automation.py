@@ -237,7 +237,8 @@ async def generate_daily(
             linkedin_post_id=metadata.get("linkedin_post_id"),
             character_count=len(published_draft.content_text),
             image_uploaded=bool(metadata.get("image_url")),
-            trace_id=run_id
+            trace_id=run_id,
+            publish_statuses=metadata.get("publish_statuses"),
         )
     except Exception as e:
         logger.error(f"[DAILY AUTOMATION ERROR] Failed daily generation: {e} [RunID: {run_id if 'run_id' in locals() else 'N/A'}]")

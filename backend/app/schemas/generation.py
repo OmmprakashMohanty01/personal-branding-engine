@@ -36,16 +36,31 @@ class VisualDirection(BaseModel):
     style: str = Field(...)
     negative_prompt: str = Field(...)
 
+class PlatformDrafts(BaseModel):
+    linkedin: str = Field(..., description="The LinkedIn post text broken into short, punchy paragraphs (max 3 sentences per paragraph).")
+    reddit_title: str = Field(default="", description="Direct, technical, non-clickbait Reddit title.")
+    reddit_body: str = Field(default="", description="In-depth technical breakdown in Markdown for engineering subreddits.")
+    x: str = Field(default="", description="Punchy standalone post or hook under 280 characters.")
+    medium_title: str = Field(default="", description="Compelling long-form engineering essay title.")
+    medium_body: str = Field(default="", description="Comprehensive Markdown article with headers, takeaways, and code snippets.")
+    dev_to_title: str = Field(default="", description="Developer-focused title.")
+    dev_to_body: str = Field(default="", description="Markdown technical article with tags and code blocks.")
+
+    # Backward compatibility: expose 'reddit' as alias for reddit_body
+    @property
+    def reddit(self) -> str:
+        return self.reddit_body
+
 class LLMContentDraft(BaseModel):
-    paragraphs: List[str] = Field(
-        ..., 
-        description="The finished LinkedIn post text broken into an array of 3 to 4 short, punchy paragraphs."
-    )
+    drafts: PlatformDrafts
     self_check: str = Field(...)
     quote_hook: str = Field(
         ..., 
         description="A powerful 10-15 word quote extracted directly from the post to be used as a typographic image card."
     )
+    target_subreddit: str = Field(default="ExperiencedDevs", description="Target technical subreddit.")
+    tags: List[str] = Field(default=["python", "devops", "programming"], description="Tags for Medium and Dev.to articles.")
+
 
 
 class DraftResponse(BaseModel):
@@ -69,4 +84,5 @@ class AutomationResponse(BaseModel):
     character_count: int
     image_uploaded: bool
     trace_id: str
+    publish_statuses: Optional[Dict[str, Any]] = None
 

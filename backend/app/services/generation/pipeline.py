@@ -64,13 +64,13 @@ FORBIDDEN_WORDS = [
 ]
 
 # ── The Unified System Prompt ──
-UNIFIED_SYSTEM_PROMPT = """You are a Senior Software Engineer writing a LinkedIn post about the topic below. You just spent hours deep in the code and you're sharing what actually happened.
+UNIFIED_SYSTEM_PROMPT = """You are a Senior Software Engineer writing about the topic below. You just spent hours deep in the code and you're sharing what actually happened.
 
 VOICE & STRUCTURE:
 Write in a raw, authentic, build in public engineering voice. No polish. Real talk.
 Anchor every point on concrete technical details: actual code patterns, real metrics, specific debugging stories. Show the messy reality.
-FORMATTING: Write in short, punchy paragraphs (1 to 3 sentences max) to ensure the reader is properly hooked and does not skip the post.
 You must continue to completely avoid using hyphens or dashes (-) anywhere in the text to maintain a humanized tone.
+
 ABSOLUTE FORBIDDEN LAWS:
 You MUST NOT use hyphens or dashes anywhere in the text. Not even in compound words. Replace them with spaces or rephrase.
 You MUST NOT use bullet points, asterisks, numbered lists, or any list formatting.
@@ -80,24 +80,36 @@ You MUST NOT add a moral, a lesson, or broad advice at the end. The story IS the
 You MUST NOT use any B2B marketing fluff or sweeping certainties.
 
 ENDING:
-End the post by asking a single, specific question inviting the audience to share their own frustrating experience.
+End the LinkedIn post by asking a single, specific question inviting the audience to share their own frustrating experience.
 
 OUTPUT FORMAT:
-Respond with ONLY a JSON object (no markdown fences, no extra text):
-{"paragraphs": ["para 1", "para 2", "para 3"], "self_check": "<1 sentence note on any rule you almost broke>", "quote_hook": "<10-15 word punchy quote extracted from the draft>"}
+Respond with ONLY a JSON object (no markdown fences, no extra text) matching this exact schema:
+{
+  "drafts": {
+    "linkedin": "<professional post with clean spacing, short punchy paragraphs, 1-3 sentences each, NO hyphens/dashes>",
+    "reddit_title": "<direct, technical, non-clickbait title for engineering subreddits>",
+    "reddit_body": "<in-depth technical Markdown breakdown, brutally honest, no marketing fluff>",
+    "x": "<punchy standalone post or hook, MUST be under 280 characters>",
+    "medium_title": "<compelling long-form engineering essay title>",
+    "medium_body": "<comprehensive Markdown article with ## headers, takeaways, and code snippets if relevant>",
+    "dev_to_title": "<developer-focused title>",
+    "dev_to_body": "<Markdown technical article with code blocks if relevant>"
+  },
+  "self_check": "<1 sentence note on any rule you almost broke>",
+  "quote_hook": "<10-15 word punchy quote extracted from the draft>",
+  "target_subreddit": "<best-fit technical subreddit like ExperiencedDevs, dataengineering, devops, or Python>",
+  "tags": ["tag1", "tag2", "tag3"]
+}
 
-FIELDS — paragraphs and quote_hook:
-1. PARAGRAPHS:
-- Fill the `paragraphs` array with 3 to 4 items.
-- Each item must be a short, punchy paragraph (max 3 sentences).
-- Keep the writing style raw, authentic, and concrete.
-- Do NOT use hyphens or dashes (-) anywhere in the text.
-
-2. QUOTE HOOK:
-- Extract a punchy, thought-provoking quote (10-15 words) directly from your draft.
-- No quotes marks.
-- This will be used as a typographic image card to accompany the post.
+PLATFORM GUIDELINES:
+1. LINKEDIN: Standard professional post with clean spacing. Short punchy paragraphs (1 to 3 sentences max). End with a question. NO hyphens or dashes.
+2. REDDIT TITLE + BODY: Write like you're posting to r/ExperiencedDevs. Title should be direct and technical. Body in Markdown. Brutally honest. No marketing.
+3. X (TWITTER): A single punchy standalone post. MUST be under 280 characters total. Make it shareable and thought-provoking.
+4. MEDIUM TITLE + BODY: Long-form Markdown essay format with ## headers. Include a compelling intro, deep analysis, and concrete takeaways.
+5. DEV.TO TITLE + BODY: Developer-focused Markdown article. Include practical code examples or system design insights.
+6. QUOTE HOOK: Extract a punchy, thought-provoking quote (10-15 words) directly from your LinkedIn draft. No quote marks. Used for typographic image card.
 """
+
 
 
 class ContentGenerationPipeline:
@@ -242,11 +254,25 @@ class ContentGenerationPipeline:
         # Last resort: treat the entire response as the draft
         logger.warning("[JSON REPAIR] Could not parse JSON. Using regex fallback.")
         matches = re.findall(r'"([^"]*)"', raw_response)
-        cleaned_text = [m for m in matches if m not in ["paragraphs", "self_check", "quote_hook"]]
+        excluded_keys = {"drafts", "linkedin", "reddit_title", "reddit_body", "x", 
+                         "medium_title", "medium_body", "dev_to_title", "dev_to_body",
+                         "self_check", "quote_hook", "target_subreddit", "tags"}
+        cleaned_text = [m for m in matches if m not in excluded_keys]
         fallback_text = "\n\n".join(cleaned_text).replace("\\n", "\n")
         
+        from app.schemas.generation import PlatformDrafts
+        text = fallback_text if fallback_text.strip() else cleaned
         return LLMContentDraft(
-            paragraphs=[fallback_text] if fallback_text.strip() else [cleaned],
+            drafts=PlatformDrafts(
+                linkedin=text,
+                reddit_title="",
+                reddit_body=text,
+                x=text[:280] if text else "",
+                medium_title="",
+                medium_body=text,
+                dev_to_title="",
+                dev_to_body=text,
+            ),
             self_check="JSON parsing failed, used raw text.",
             quote_hook="Engineering excellence requires simplicity."
         )
@@ -306,7 +332,8 @@ class ContentGenerationPipeline:
 
         # Parse the structured JSON response
         parsed = self._parse_llm_json(raw_response)
-        generated_text = "\n\n".join(parsed.paragraphs)
+        generated_text = parsed.drafts.linkedin
+        reddit_text = parsed.drafts.reddit_body
         self_check = parsed.self_check
         quote_hook = parsed.quote_hook
 
@@ -430,6 +457,11 @@ class ContentGenerationPipeline:
             "metrics": metrics.to_dict(),
             "telemetry": context.telemetry.to_dict(),
             "llm_output_metadata": llm_output_metadata,
+            "platform_drafts": parsed.drafts.model_dump(),
+            "parsed_llm_output": {
+                "target_subreddit": parsed.target_subreddit,
+                "tags": parsed.tags,
+            },
         }
         llm_metadata.update(pipeline_metadata)
 

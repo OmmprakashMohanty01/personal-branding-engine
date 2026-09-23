@@ -107,7 +107,8 @@ async def test_client_refresh_expired_token(mock_post: AsyncMock, db_session: As
 # ==========================================
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
-async def test_orchestrator_publishing_success(mock_publish: AsyncMock, db_session: AsyncSession):
+@patch("app.services.publishing.linkedin.client.LinkedInClient.upload_media", new_callable=AsyncMock)
+async def test_orchestrator_publishing_success(mock_upload: AsyncMock, mock_publish: AsyncMock, db_session: AsyncSession):
     mock_publish.return_value = "urn:li:share:share_id_987"
     
     # Seed account and draft in database
@@ -142,7 +143,8 @@ async def test_orchestrator_publishing_success(mock_publish: AsyncMock, db_sessi
 
 @pytest.mark.asyncio
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post")
-async def test_orchestrator_publishing_failure_handling(mock_publish: AsyncMock, db_session: AsyncSession):
+@patch("app.services.publishing.linkedin.client.LinkedInClient.upload_media", new_callable=AsyncMock)
+async def test_orchestrator_publishing_failure_handling(mock_upload: AsyncMock, mock_publish: AsyncMock, db_session: AsyncSession):
     # Simulate API HTTP Error
     mock_publish.side_effect = Exception("HTTP 400 Bad Request")
     
@@ -162,8 +164,8 @@ async def test_orchestrator_publishing_failure_handling(mock_publish: AsyncMock,
     await db_session.commit()
     
     orchestrator = PublishingOrchestrator()
-    with pytest.raises(Exception):
-        await orchestrator.publish_draft(db_session, "d-11")
+    updated_draft = await orchestrator.publish_draft(db_session, "d-11")
+    assert updated_draft.status == "FAILED"
     
     # Assert database preserves the record for review in FAILED status
     res = await db_session.execute(select(ContentDraft).where(ContentDraft.id == "d-11"))
@@ -425,7 +427,7 @@ async def test_orchestrator_linkedin_pre_flight_local_url_fallback(db_session: A
     await db_session.commit()
     
     orchestrator = PublishingOrchestrator()
-    with patch("app.services.publishing.orchestrator.execute_with_retry", new_callable=AsyncMock) as mock_execute:
+    with patch("app.services.publishing.linkedin.client.LinkedInClient.publish", new_callable=AsyncMock) as mock_execute:
         mock_execute.return_value = "urn:li:share:text_only_fallback"
         
         # When requires_image=True but image_url gets wiped due to being local, the orchestrator raises HTTPException(400)

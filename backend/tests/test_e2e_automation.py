@@ -17,23 +17,33 @@ def override_settings(monkeypatch):
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
+@patch("app.services.publishing.linkedin.client.LinkedInClient.upload_media", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_automation_daily_success(
     mock_check_idempotency,
     mock_get_account,
+    mock_upload,
     mock_publish,
     mock_litellm,
     override_settings
 ):
     """Test 1: Complete Scheduled Automation Flow (API -> DB -> Publish -> Success)"""
-    mock_get_account.return_value = AsyncMock()
+    from datetime import datetime, timedelta, timezone
+    from app.models.integration import LinkedInAccount
+    from app.services.publishing.linkedin.crypto import encrypt_token
+    mock_account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=10),
+        access_token=encrypt_token("test_access")
+    )
+    mock_get_account.return_value = mock_account
     mock_publish.return_value = "urn:li:share:987654321"
     
     # Mock LiteLLM to return structured JSON
     mock_response = AsyncMock()
     mock_response.choices = [AsyncMock()]
-    mock_response.choices[0].message.content = '{"paragraphs": ["This is a fully generated post ready for publishing.", "It has enough content to pass all the validation gates and length checks."], "self_check": "All good.", "quote_hook": "Automation success."}'
+    mock_response.choices[0].message.content = '{"drafts": {"linkedin": "This is a fully generated post ready for publishing. It has enough content to pass all the validation gates and length checks.", "reddit_body": "This is a reddit post. It is good."}, "self_check": "All good.", "quote_hook": "Automation success."}'
     mock_litellm.return_value = mock_response
     
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -79,11 +89,13 @@ async def test_automation_daily_success(
 @pytest.mark.asyncio
 @patch("app.services.generation.pipeline.litellm.acompletion", new_callable=AsyncMock)
 @patch("app.services.publishing.linkedin.client.LinkedInClient.publish_post", new_callable=AsyncMock)
+@patch("app.services.publishing.linkedin.client.LinkedInClient.upload_media", new_callable=AsyncMock)
 @patch("app.services.publishing.orchestrator.PublishingOrchestrator._get_default_linkedin_account", new_callable=AsyncMock)
 @patch("app.api.endpoints.automation.check_today_idempotency", return_value=None)
 async def test_full_length_post_integrity(
     mock_check_idempotency,
     mock_get_account,
+    mock_upload,
     mock_publish,
     mock_litellm,
     override_settings
@@ -96,11 +108,20 @@ async def test_full_length_post_integrity(
     mock_response.choices = [AsyncMock()]
     import json
     mock_response.choices[0].message.content = json.dumps({
-        "paragraphs": [long_post_text],
+        "drafts": {"linkedin": long_post_text, "reddit_body": long_post_text},
         "self_check": "OK",
         "quote_hook": "Long post hook"
     })
     mock_litellm.return_value = mock_response
+    from datetime import datetime, timedelta, timezone
+    from app.models.integration import LinkedInAccount
+    from app.services.publishing.linkedin.crypto import encrypt_token
+    mock_account = LinkedInAccount(
+        linkedin_person_urn="urn:li:person:abc",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        access_token=encrypt_token("test_access")
+    )
+    mock_get_account.return_value = mock_account
     mock_publish.return_value = "urn:li:share:longpost"
     
     from app.database import get_db
@@ -138,8 +159,8 @@ async def test_full_length_post_integrity(
             
             # 2. LinkedIn payload verification
             # Verify what was passed to LinkedInClient.publish_post
-            publish_args = mock_publish.call_args.kwargs
-            assert len(publish_args["text"]) == 2800
+            publish_text = mock_publish.call_args.args[2]
+            assert len(publish_text) == 2800
     finally:
         app.dependency_overrides.pop(get_db, None)
 

@@ -261,22 +261,26 @@ class TestPromptBuilder:
 class TestLLMContentDraft:
 
     def test_minimal_valid_output(self):
+        from app.schemas.generation import PlatformDrafts
         output = LLMContentDraft(
-            paragraphs=["Hello world"],
+            drafts=PlatformDrafts(linkedin="Hello world", reddit_body="Hello reddit"),
             self_check="Checked.",
             quote_hook="Hello"
         )
-        assert output.paragraphs == ["Hello world"]
+        assert output.drafts.linkedin == "Hello world"
+        assert output.drafts.reddit == "Hello reddit"
         assert output.self_check == "Checked."
         assert output.quote_hook == "Hello"
 
     def test_full_valid_output(self):
+        from app.schemas.generation import PlatformDrafts
         output = LLMContentDraft(
-            paragraphs=["This is a technical post.", "It is good."],
+            drafts=PlatformDrafts(linkedin="This is a technical post.", reddit_body="*Markdown* tech post."),
             self_check="No hyphens used.",
             quote_hook="This is a technical post."
         )
-        assert output.paragraphs == ["This is a technical post.", "It is good."]
+        assert output.drafts.linkedin == "This is a technical post."
+        assert output.drafts.reddit == "*Markdown* tech post."
         assert output.self_check == "No hyphens used."
         assert output.quote_hook == "This is a technical post."
 

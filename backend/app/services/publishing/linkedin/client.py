@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.integration import LinkedInAccount
 from app.services.publishing.linkedin.crypto import encrypt_token, decrypt_token
 from app.services.generation.formatters import LinkedInFormatter
+from app.services.publishing.base import SocialPublisher, AuthenticationError
 
 logger = logging.getLogger("branding_engine.publishing.linkedin.client")
 
@@ -21,11 +22,12 @@ def _is_valid_image_format(image_bytes: bytes) -> bool:
         return True
     return False
 
-class AuthenticationError(Exception):
-    pass
-
-class LinkedInClient:
+class LinkedInClient(SocialPublisher):
     """Async client wrapper for interacting with the LinkedIn Posts API and OAuth2 endpoints."""
+    
+    @property
+    def name(self) -> str:
+        return "linkedin"
     
     def __init__(self):
         import sys
@@ -40,6 +42,11 @@ class LinkedInClient:
             
         self.api_url = "https://api.linkedin.com"
         self.oauth_url = "https://www.linkedin.com"
+
+    def is_connected(self) -> bool:
+        # LinkedIn connection state is actually determined per-account via db query,
+        # but returning True allows the orchestrator to try loading the default account.
+        return True
 
     async def check_and_refresh_token(self, db: AsyncSession, account: LinkedInAccount) -> str:
         """Evaluate token expiry and refresh via OAuth2 if required. Returns decrypted access token."""
@@ -116,6 +123,24 @@ class LinkedInClient:
                     detail="LinkedIn session expired or corrupted. Please re-link your account."
                 )
             raise e
+            
+    async def validate_auth(self, **kwargs):
+        db = kwargs.get('db')
+        account = kwargs.get('account')
+        if not db or not account:
+            raise ValueError("db and account are required for LinkedIn validate_auth")
+            
+        access_token = await self.check_and_refresh_token(db, account)
+        if "mock" in (account.linkedin_person_urn or "") or "mock" in access_token:
+            raise AuthenticationError("LinkedIn token expired or invalid. Please re-authenticate.")
+
+    async def upload_media(self, image_url: str | None = None, **kwargs) -> str | None:
+        if not image_url:
+            return None
+        account = kwargs.get('account')
+        db = kwargs.get('db')
+        access_token = await self.check_and_refresh_token(db, account)
+        return await self.upload_image(account, image_url, access_token)
 
     async def upload_image(self, account: LinkedInAccount, image_data: bytes | str, access_token: str) -> str:
         """Upload raw image bytes to LinkedIn and return the image URN.
@@ -260,6 +285,12 @@ class LinkedInClient:
         # Step 4: Return the imageUrn
         return image_urn
 
+    async def publish(self, draft_text: str, media_id: str | None = None, **kwargs) -> str:
+        db = kwargs.get('db')
+        account = kwargs.get('account')
+        idempotency_key = kwargs.get('idempotency_key')
+        return await self.publish_post(db, account, draft_text, media_id, idempotency_key)
+
     async def publish_post(self, db: AsyncSession, account: LinkedInAccount, text: str, image_url: str | None = None, idempotency_key: str | None = None) -> str:
         """Publish content to LinkedIn using the modern /rest/posts endpoint.
         
@@ -336,9 +367,6 @@ class LinkedInClient:
         # Task 3: Inject Validation Assertions right before posting to publish
         post_text = sanitized_text
         assert len(post_text) > 100, "Text was truncated prematurely"
-            
-        if "mock" in (account.linkedin_person_urn or "") or "mock" in access_token:
-            raise AuthenticationError("LinkedIn token expired or invalid. Please re-authenticate.")
             
         async with httpx.AsyncClient() as client:
             try:

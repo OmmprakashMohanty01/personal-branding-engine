@@ -21,3 +21,6 @@ markdown>=3.5
 Pillow
 litellm
 pillow
+praw
+tweepy
+cryptography
