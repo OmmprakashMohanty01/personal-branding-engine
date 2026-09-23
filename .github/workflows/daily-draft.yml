@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Trigger Daily Post (with Render Cold Start Buffer)
         run: |
-          curl -f -X POST "https://personal-branding-engine.onrender.com/api/v1/automation/daily" \
+          curl -X POST "https://personal-branding-engine.onrender.com/api/v1/automation/daily" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             --max-time 300 \
